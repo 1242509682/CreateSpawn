@@ -12,7 +12,7 @@
 | /cb on | create.copy |   开启插件   |
 | /cb off | create.copy |   关闭插件   |
 | /cb s 1 | create.copy |   敲击或放置一个方块到左上角   |
-| /cb s 2 | create.copy |   敲击或放置一个方块到左上角   |
+| /cb s 2 | create.copy |   敲击或放置一个方块到右下角   |
 | /cb sv  | create.copy | 保存建筑 |
 | /cb sp   | create.copy |      生成建筑      |
 | /cb bk   | create.copy |      还原建筑覆盖图格      |
