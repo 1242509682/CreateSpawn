@@ -1,0 +1,15 @@
+copy bin\Release\net6.0\CreateSpawn.dll C:\Users\羽学\Desktop\Beta\ServerPlugins
+del C:\Users\羽学\Desktop\Beta\tshock\CreateSpawn.json
+del C:\Users\羽学\Desktop\Beta\tshock\CreateSpawn.map
+taskkill /F /IM TShock.Server.exe
+del C:\Users\羽学\Desktop\Beta\world\*.wld
+del C:\Users\羽学\Desktop\Beta\world\*.wld.bak
+del C:\Users\羽学\Desktop\Beta\world\*.wld.bak2
+
+
+    <ItemGroup>
+		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p" />
+		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-68w7-72jg-6qpp" />
+		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-447r-wph3-92pm" />
+      <PackageReference Include="TShock" Version="5.2.1" />
+    </ItemGroup>
