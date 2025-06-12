@@ -1,40 +1,25 @@
-﻿using Microsoft.Xna.Framework;
-using Terraria;
+﻿using Terraria;
+using Microsoft.Xna.Framework;
 
 namespace CreateSpawn;
 
+//剪贴板数据
 public class Building
 {
-    //建筑的名称
-    public string name { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public Tile[,]? Tiles { get; set; }
+    public Point Origin { get; set; }
 
-    //建筑的原始图格数据
-    public Dictionary<Point, Tile> OrigTiles = new Dictionary<Point, Tile>();
-
-    public byte bTileHeader { get; set; }
-    public byte bTileHeader2 { get; set; }
-    public byte bTileHeader3 { get; set; }
-    public short frameX { get; set; }
-    public short frameY { get; set; }
-    public byte liquid { get; set; }
-    public ushort sTileHeader { get; set; }
-    public ushort type { get; set; }
-    public ushort wall { get; set; }
-
-    public Building() { }
-
-    public Building(string name, byte header, byte header2, byte header3, short x, short y, byte liquid, ushort sHeader, ushort type, ushort wall, Dictionary<Point, Tile> origTiles)
-    {
-        this.name = name;
-        this.bTileHeader = header;
-        this.bTileHeader2 = header2;
-        this.bTileHeader3 = header3;
-        this.frameX = x;
-        this.frameY = y;
-        this.liquid = liquid;
-        this.sTileHeader = sHeader;
-        this.type = type;
-        this.wall = wall;
-        this.OrigTiles = origTiles;
-    }
+    public List<ChestItemData>? ChestItems { get; set; } // 箱子的物品
+    public List<Sign>? Signs { get; set; } // 告示牌
 }
+
+//箱子物品数据
+public class ChestItemData
+{
+    public Item? Item { get; set; }           // 物品本身（可空）
+    public Point Position { get; set; }  // 箱子位置（世界坐标） 
+    public int Slot { get; set; }             // 槽位编号（0 ~ 39）
+}
+

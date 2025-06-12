@@ -1,10 +1,6 @@
-copy bin\Release\net6.0\CreateSpawn.dll C:\Users\羽学\Desktop\Beta\ServerPlugins
-del C:\Users\羽学\Desktop\Beta\tshock\CreateSpawn.json
-del C:\Users\羽学\Desktop\Beta\tshock\CreateSpawn.map
+copy bin\Release\net6.0\CreateSpawn.dll C:\Users\羽学\Desktop\TShock\ServerPlugins
+del C:\Users\羽学\Desktop\TShock\tshock\CreateSpawn.json
 taskkill /F /IM TShock.Server.exe
-del C:\Users\羽学\Desktop\Beta\world\*.wld
-del C:\Users\羽学\Desktop\Beta\world\*.wld.bak
-del C:\Users\羽学\Desktop\Beta\world\*.wld.bak2
 
 
     <ItemGroup>

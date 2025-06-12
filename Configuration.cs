@@ -7,8 +7,11 @@ internal class Configuration
 {
     public static readonly string FilePath = Path.Combine(TShock.SavePath, "CreateSpawn.json");
 
-    [JsonProperty("插件开关", Order = 0)]
-    public bool Enabled { get; set; } = false;
+    [JsonProperty("出生点生成", Order = -1)]
+    public bool Enabled { get; set; } = true;
+
+    [JsonProperty("修复晶塔", Order = 0)]
+    public bool FixPylon { get; set; } = false;
 
     [JsonProperty("中心X", Order = 1)]
     public int CentreX { get; set; } = 0;
@@ -25,10 +28,10 @@ internal class Configuration
     #region 预设参数方法
     public void SetDefault()
     {
-        this.CentreX = 0;
-        this.CountY = 0;
-        this.AdjustX = 0;
-        this.AdjustY = 0;
+        this.CentreX = 47;
+        this.CountY = 57;
+        this.AdjustX = 18;
+        this.AdjustY = 27;
     }
     #endregion
 
