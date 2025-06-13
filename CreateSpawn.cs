@@ -15,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 0, 0, 8);
+    public override Version Version => new(1, 0, 0, 9);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴";
     #endregion
 
@@ -142,6 +142,9 @@ public class CreateSpawn : TerrariaPlugin
 
         return Task.Run(() =>
         {
+            // 先销毁目标区域的互动家具实体
+            KillAll(startX, startX + clip.Width - 1, startY, startY + clip.Height - 1);
+
             for (int x = 0; x < clip.Width; x++)
             {
                 for (int y = 0; y < clip.Height; y++)

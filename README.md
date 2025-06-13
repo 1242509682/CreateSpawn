@@ -17,13 +17,13 @@
 | /cb sp 名字  | create.copy |      生成建筑      |
 | /cb bk   | create.copy |      还原建筑覆盖图格      |
 | /cb list   | create.copy |      列出已有建筑     |
+| /cb zip   | create.copy |      清空建筑并备份为zip     |
 
 ## 配置
 > 配置文件位置：tshock/CreateSpawn.json
 ```json5
 {
-  "出生点生成": false,
-  "修复晶塔": false,
+  "出生点生成": true,
   "centreX": 145, //不要动
   "CountY": 178, //不要动
   "微调X": -21,
@@ -33,6 +33,11 @@
 
 ## 更新日志
 ```
+v1.0.0.9
+修复复制一次建筑，导致该晶塔即使挖掉也无法放置的BUG
+还原建筑时不再残留实体在图格上
+移除修复晶塔配置项
+
 v1.0.0.8
 重构了/cb back还原指令方法
 修复还原指令能和生成建筑指令一样还原箱子物品与标牌消息

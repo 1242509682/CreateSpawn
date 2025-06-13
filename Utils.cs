@@ -44,7 +44,10 @@ internal static class Utils
 
         if (building.Tiles == null) return;
 
-        // 1. 先还原图格数据
+        // 0. 还原前先销毁当前区域的互动家具实体
+        KillAll(startX, endX, startY, endY);
+
+        // 1. 还原图格数据
         for (int x = 0; x < building.Width; x++)
         {
             for (int y = 0; y < building.Height; y++)
@@ -294,7 +297,7 @@ internal static class Utils
                 }
 
                 //物品框
-                if (tile.type == TileID.ItemFrame)
+                if (tile.type == TileID.ItemFrame && tile.frameX == 0 && tile.frameY == 0)
                 {
                     var ItemFrame = Terraria.GameContent.Tile_Entities.TEItemFrame.Place(x, y);
                     WorldGen.SquareTileFrame(x, y, true);
@@ -302,7 +305,7 @@ internal static class Utils
                 }
 
                 //武器架
-                if (tile.type == TileID.WeaponsRack || tile.type == TileID.WeaponsRack2)
+                if ((tile.type == TileID.WeaponsRack || tile.type == TileID.WeaponsRack2) && tile.frameX == 0 && tile.frameY == 0)
                 {
                     var WeaponsRack = Terraria.GameContent.Tile_Entities.TEWeaponsRack.Place(x, y);
                     WorldGen.SquareTileFrame(x, y, true);
@@ -322,7 +325,7 @@ internal static class Utils
 
                 //逻辑感应器
                 if (tile.type == TileID.LogicSensor &&
-                    Terraria.GameContent.Tile_Entities.TELogicSensor.Find(x, y) == -1)
+                    Terraria.GameContent.Tile_Entities.TELogicSensor.Find(x, y) == -1 && tile.frameX == 0 && tile.frameY == 0)
                 {
                     int LogicSensor = Terraria.GameContent.Tile_Entities.TELogicSensor.Place(x, y);
                     if (LogicSensor == -1) continue;
@@ -331,14 +334,14 @@ internal static class Utils
                 }
 
                 //人体模型
-                if (tile.type == TileID.DisplayDoll)
+                if (tile.type == TileID.DisplayDoll && tile.frameX == 0 && tile.frameY == 0)
                 {
                     var DisplayDoll = Terraria.GameContent.Tile_Entities.TEDisplayDoll.Place(x, y);
                     if (DisplayDoll == -1) continue;
                 }
 
                 //盘子
-                if (tile.type == TileID.FoodPlatter)
+                if (tile.type == TileID.FoodPlatter && tile.frameX == 0 && tile.frameY == 0)
                 {
                     var FoodPlatter = Terraria.GameContent.Tile_Entities.TEFoodPlatter.Place(x, y);
                     WorldGen.SquareTileFrame(x, y, true);
@@ -346,21 +349,21 @@ internal static class Utils
                 }
 
                 //晶塔
-                if (Config.FixPylon && tile.type == TileID.TeleportationPylon)
+                if (tile.type == TileID.TeleportationPylon && tile.frameX == 0 && tile.frameY == 0)
                 {
                     var TeleportationPylon = Terraria.GameContent.Tile_Entities.TETeleportationPylon.Place(x, y);
                     if (TeleportationPylon == -1) continue;
                 }
 
                 //训练假人（稻草人）
-                if (tile.type == TileID.TargetDummy)
+                if (tile.type == TileID.TargetDummy && tile.frameX == 0 && tile.frameY == 0)
                 {
                     var TrainingDummy = Terraria.GameContent.Tile_Entities.TETrainingDummy.Place(x, y);
                     if (TrainingDummy == -1) continue;
                 }
 
                 //衣帽架
-                if (tile.type == TileID.HatRack)
+                if (tile.type == TileID.HatRack && tile.frameX == 0 && tile.frameY == 0)
                 {
                     var HatRack = Terraria.GameContent.Tile_Entities.TEHatRack.Place(x, y);
                     WorldGen.SquareTileFrame(x, y, true);
@@ -369,5 +372,81 @@ internal static class Utils
             }
         }
     }
+    #endregion
+
+    #region 销毁所有互动家具实体
+    public static void KillAll(int startX, int endX, int startY, int endY)
+    {
+        for (int x = startX; x <= endX; x++)
+        {
+            for (int y = startY; y <= endY; y++)
+            {
+                var tile = Main.tile[x, y];
+                if (tile == null || !tile.active()) continue;
+
+                //如果查找图格里是箱子
+                if (TileID.Sets.BasicChest[tile.type] && Chest.FindChest(x, y) == -1)
+                {
+                    Chest.DestroyChest(x, y);
+                }
+
+                //物品框
+                if (tile.type == TileID.ItemFrame)
+                {
+                    Terraria.GameContent.Tile_Entities.TEItemFrame.Kill(x, y);
+                }
+
+                //武器架
+                if (tile.type == TileID.WeaponsRack || tile.type == TileID.WeaponsRack2)
+                {
+                    Terraria.GameContent.Tile_Entities.TEWeaponsRack.Kill(x, y);
+                }
+
+                //标牌 墓碑  广播盒
+                if ((tile.type == TileID.Signs ||
+                    tile.type == TileID.Tombstones ||
+                    tile.type == TileID.AnnouncementBox))
+                {
+                    Sign.KillSign(x, y);
+                }
+
+                //逻辑感应器
+                if (tile.type == TileID.LogicSensor)
+                {
+                    Terraria.GameContent.Tile_Entities.TELogicSensor.Kill(x, y);
+                }
+
+                //人体模型
+                if (tile.type == TileID.DisplayDoll)
+                {
+                    Terraria.GameContent.Tile_Entities.TEDisplayDoll.Kill(x, y);
+                }
+
+                //盘子
+                if (tile.type == TileID.FoodPlatter)
+                {
+                    Terraria.GameContent.Tile_Entities.TEFoodPlatter.Kill(x, y);
+                }
+
+                //晶塔
+                if (tile.type == TileID.TeleportationPylon)
+                {
+                    Terraria.GameContent.Tile_Entities.TETeleportationPylon.Kill(x, y);
+                }
+
+                //训练假人（稻草人）
+                if (tile.type == TileID.TargetDummy)
+                {
+                    Terraria.GameContent.Tile_Entities.TETrainingDummy.Kill(x, y);
+                }
+
+                //衣帽架
+                if (tile.type == TileID.HatRack)
+                {
+                    Terraria.GameContent.Tile_Entities.TEHatRack.Kill(x, y);
+                }
+            }
+        }
+    } 
     #endregion
 }

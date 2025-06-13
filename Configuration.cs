@@ -7,11 +7,8 @@ internal class Configuration
 {
     public static readonly string FilePath = Path.Combine(TShock.SavePath, "CreateSpawn.json");
 
-    [JsonProperty("出生点生成", Order = -1)]
+    [JsonProperty("出生点生成", Order = -10)]
     public bool Enabled { get; set; } = true;
-
-    [JsonProperty("修复晶塔", Order = 0)]
-    public bool FixPylon { get; set; } = false;
 
     [JsonProperty("中心X", Order = 1)]
     public int CentreX { get; set; } = 0;
