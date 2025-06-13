@@ -24,49 +24,28 @@ public class Map
     }
     #endregion
 
-    #region 加载磁盘中的原始图格写到内存方法
-    public static Stack<Dictionary<Point, Terraria.Tile>> LoadBack(string name)
+    #region 加载原始图格方法
+    public static Stack<Building> LoadBack(string name)
     {
         string filePath = Path.Combine(Paths, $"{name}_bk.map");
-        if (!File.Exists(filePath)) return new Stack<Dictionary<Point, Terraria.Tile>>();
+        if (!File.Exists(filePath)) return new Stack<Building>();
 
-        var stack = new Stack<Dictionary<Point, Terraria.Tile>>();
+        var stack = new Stack<Building>();
         using (var fs = GZipRead(filePath))
         using (var reader = new BinaryReader(fs))
         {
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
             {
-                int size = reader.ReadInt32();
-                var snapshot = new Dictionary<Point, Terraria.Tile>(size);
-
-                for (int j = 0; j < size; j++)
-                {
-                    int x = reader.ReadInt32();
-                    int y = reader.ReadInt32();
-                    var tile = new Terraria.Tile
-                    {
-                        bTileHeader = reader.ReadByte(),
-                        bTileHeader2 = reader.ReadByte(),
-                        bTileHeader3 = reader.ReadByte(),
-                        frameX = reader.ReadInt16(),
-                        frameY = reader.ReadInt16(),
-                        liquid = reader.ReadByte(),
-                        sTileHeader = reader.ReadUInt16(),
-                        type = reader.ReadUInt16(),
-                        wall = reader.ReadUInt16()
-                    };
-                    snapshot[new Point(x, y)] = tile;
-                }
-                stack.Push(snapshot);
+                stack.Push(LoadBuilding(reader));
             }
         }
         return stack;
     }
     #endregion
 
-    #region 保存原始图格从内存写到磁盘方法
-    public static void SaveBack(string name, Stack<Dictionary<Point, Terraria.Tile>> stack)
+    #region 保存原始图格方法
+    public static void SaveBack(string name, Stack<Building> stack)
     {
         Directory.CreateDirectory(Paths);
         string filePath = Path.Combine(Paths, $"{name}_bk.map");
@@ -75,24 +54,9 @@ public class Map
         using (var writer = new BinaryWriter(fs))
         {
             writer.Write(stack.Count);
-            foreach (var snapshot in stack)
+            foreach (var building in stack)
             {
-                writer.Write(snapshot.Count);
-                foreach (var pair in snapshot)
-                {
-                    writer.Write(pair.Key.X);
-                    writer.Write(pair.Key.Y);
-                    var tile = pair.Value;
-                    writer.Write(tile.bTileHeader);
-                    writer.Write(tile.bTileHeader2);
-                    writer.Write(tile.bTileHeader3);
-                    writer.Write(tile.frameX);
-                    writer.Write(tile.frameY);
-                    writer.Write(tile.liquid);
-                    writer.Write(tile.sTileHeader);
-                    writer.Write(tile.type);
-                    writer.Write(tile.wall);
-                }
+                SaveBuilding(writer, building);
             }
         }
     }
@@ -107,93 +71,13 @@ public class Map
         using (var fs = GZipRead(filePath))
         using (var reader = new BinaryReader(fs))
         {
-            int originX = reader.ReadInt32();
-            int originY = reader.ReadInt32();
-            int width = reader.ReadInt32();
-            int height = reader.ReadInt32();
-
-            var tiles = new Terraria.Tile[width, height];
-            for (int x = 0; x < width; x++)
-            {
-                for (int y = 0; y < height; y++)
-                {
-                    var tile = new Terraria.Tile
-                    {
-                        bTileHeader = reader.ReadByte(),
-                        bTileHeader2 = reader.ReadByte(),
-                        bTileHeader3 = reader.ReadByte(),
-                        frameX = reader.ReadInt16(),
-                        frameY = reader.ReadInt16(),
-                        liquid = reader.ReadByte(),
-                        sTileHeader = reader.ReadUInt16(),
-                        type = reader.ReadUInt16(),
-                        wall = reader.ReadUInt16()
-                    };
-                    tiles[x, y] = tile;
-                }
-            }
-
-            // 添加箱子物品加载
-            int Count = reader.ReadInt32();
-            var chestItems = new List<ChestItemData>(Count);
-            for (int i = 0; i < Count; i++)
-            {
-                int posX = reader.ReadInt32();
-                int posY = reader.ReadInt32();
-                int slot = reader.ReadInt32();
-                int type = reader.ReadInt32();
-                int netId = reader.ReadInt32();
-                int stack = reader.ReadInt32();
-                byte prefix = reader.ReadByte();
-
-                var item = new Item();
-                item.SetDefaults(type);
-                item.netID = netId;
-                item.stack = stack;
-                item.prefix = prefix;
-
-                chestItems.Add(new ChestItemData
-                {
-                    Position = new Point(posX, posY),
-                    Slot = slot,
-                    Item = item
-                });
-            }
-
-            //添加标牌
-            int signCount = reader.ReadInt32();
-            var signText = new List<Sign>(signCount);
-            for (int i = 0; i < signCount; i++)
-            {
-                int xRel = reader.ReadInt32();
-                int yRel = reader.ReadInt32();
-                string text = reader.ReadString();
-
-                var sign = new Sign
-                {
-                    x = originX + xRel,
-                    y = originY + yRel,
-                    text = text
-                };
-
-                signText.Add(sign);
-            }
-
-            return new Building
-            {
-                Origin = new Point(originX, originY),
-                Width = width,
-                Height = height,
-                Tiles = tiles,
-                ChestItems = chestItems,
-                Signs = signText
-            };
+           return LoadBuilding(reader);
         }
     }
     #endregion
 
     #region 保存剪贴板方法
-    internal static void SaveClip(string name, Building clip)
+    internal static void SaveClip(string name, Building building)
     {
         Directory.CreateDirectory(Paths);
         string filePath = Path.Combine(Paths, $"{name}_cp.map");
@@ -201,57 +85,151 @@ public class Map
         using (var fs = GZipWrite(filePath))
         using (var writer = new BinaryWriter(fs))
         {
-            writer.Write(clip.Origin.X);
-            writer.Write(clip.Origin.Y);
-            writer.Write(clip.Width);
-            writer.Write(clip.Height);
+            SaveBuilding(writer, building);
+        }
+    }
+    #endregion
 
-            for (int x = 0; x < clip.Width; x++)
+    #region 把建筑写入到内存方法
+    private static void SaveBuilding(BinaryWriter writer, Building building)
+    {
+        writer.Write(building.Origin.X);
+        writer.Write(building.Origin.Y);
+        writer.Write(building.Width);
+        writer.Write(building.Height);
+
+        if (building.Tiles == null) return;
+
+        for (int x = 0; x < building.Width; x++)
+        {
+            for (int y = 0; y < building.Height; y++)
             {
-                for (int y = 0; y < clip.Height; y++)
-                {
-                    var tile = clip.Tiles![x, y];
-                    writer.Write(tile.bTileHeader);
-                    writer.Write(tile.bTileHeader2);
-                    writer.Write(tile.bTileHeader3);
-                    writer.Write(tile.frameX);
-                    writer.Write(tile.frameY);
-                    writer.Write(tile.liquid);
-                    writer.Write(tile.sTileHeader);
-                    writer.Write(tile.type);
-                    writer.Write(tile.wall);
-                }
+                var tile = building.Tiles[x, y];
+                writer.Write(tile.bTileHeader);
+                writer.Write(tile.bTileHeader2);
+                writer.Write(tile.bTileHeader3);
+                writer.Write(tile.frameX);
+                writer.Write(tile.frameY);
+                writer.Write(tile.liquid);
+                writer.Write(tile.sTileHeader);
+                writer.Write(tile.type);
+                writer.Write(tile.wall);
             }
+        }
 
-            // 保存箱子物品数据
-            writer.Write(clip.ChestItems?.Count ?? 0);
-            if (clip.ChestItems != null)
+        // 箱子物品
+        writer.Write(building.ChestItems?.Count ?? 0);
+        if (building.ChestItems != null)
+        {
+            foreach (var data in building.ChestItems)
             {
-                foreach (var data in clip.ChestItems)
-                {
-                    writer.Write(data.Position.X);
-                    writer.Write(data.Position.Y);
-                    writer.Write(data.Slot);
-                    writer.Write(data.Item?.type ?? 0);
-                    writer.Write(data.Item?.netID ?? 0);
-                    writer.Write(data.Item?.stack ?? 0);
-                    writer.Write(data.Item?.prefix ?? 0);
-                }
+                writer.Write(data.Position.X);
+                writer.Write(data.Position.Y);
+                writer.Write(data.Slot);
+                writer.Write(data.Item?.type ?? 0);
+                writer.Write(data.Item?.netID ?? 0);
+                writer.Write(data.Item?.stack ?? 0);
+                writer.Write(data.Item?.prefix ?? 0);
             }
+        }
 
-            // 保存标牌数据
-            writer.Write(clip.Signs?.Count ?? 0);
-            if (clip.Signs != null)
+        // 标牌
+        writer.Write(building.Signs?.Count ?? 0);
+        if (building.Signs != null)
+        {
+            foreach (var sign in building.Signs)
             {
-                foreach (var sign in clip.Signs)
-                {
-                    writer.Write(sign.x - clip.Origin.X); // 相对坐标
-                    writer.Write(sign.y - clip.Origin.Y);
-                    writer.Write(sign.text ?? "");
-                }
+                writer.Write(sign.x - building.Origin.X); // 相对坐标
+                writer.Write(sign.y - building.Origin.Y);
+                writer.Write(sign.text ?? "");
             }
         }
     }
+    #endregion
+
+    #region 从内存加载建筑方法
+    private static Building LoadBuilding(BinaryReader reader)
+    {
+        int originX = reader.ReadInt32();
+        int originY = reader.ReadInt32();
+        int width = reader.ReadInt32();
+        int height = reader.ReadInt32();
+
+        var tiles = new Terraria.Tile[width, height];
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                var tile = new Terraria.Tile
+                {
+                    bTileHeader = reader.ReadByte(),
+                    bTileHeader2 = reader.ReadByte(),
+                    bTileHeader3 = reader.ReadByte(),
+                    frameX = reader.ReadInt16(),
+                    frameY = reader.ReadInt16(),
+                    liquid = reader.ReadByte(),
+                    sTileHeader = reader.ReadUInt16(),
+                    type = reader.ReadUInt16(),
+                    wall = reader.ReadUInt16()
+                };
+                tiles[x, y] = tile;
+            }
+        }
+
+        // 箱子物品
+        int chestItemCount = reader.ReadInt32();
+        var chestItems = new List<ChestItemData>(chestItemCount);
+        for (int i = 0; i < chestItemCount; i++)
+        {
+            int posX = reader.ReadInt32();
+            int posY = reader.ReadInt32();
+            int slot = reader.ReadInt32();
+            int type = reader.ReadInt32();
+            int netId = reader.ReadInt32();
+            int stack = reader.ReadInt32();
+            byte prefix = reader.ReadByte();
+
+            var item = new Item();
+            item.SetDefaults(type);
+            item.netID = netId;
+            item.stack = stack;
+            item.prefix = prefix;
+
+            chestItems.Add(new ChestItemData
+            {
+                Position = new Point(posX, posY),
+                Slot = slot,
+                Item = item
+            });
+        }
+
+        // 标牌
+        int signCount = reader.ReadInt32();
+        var signs = new List<Sign>(signCount);
+        for (int i = 0; i < signCount; i++)
+        {
+            int relX = reader.ReadInt32();
+            int relY = reader.ReadInt32();
+            string text = reader.ReadString();
+
+            signs.Add(new Sign
+            {
+                x = originX + relX,
+                y = originY + relY,
+                text = text
+            });
+        }
+
+        return new Building
+        {
+            Origin = new Point(originX, originY),
+            Width = width,
+            Height = height,
+            Tiles = tiles,
+            ChestItems = chestItems,
+            Signs = signs
+        };
+    } 
     #endregion
 
     #region 获取所有已存在的剪贴板名称

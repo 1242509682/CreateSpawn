@@ -1,5 +1,6 @@
 ﻿using Microsoft.Xna.Framework;
 using TShockAPI;
+using static CreateSpawn.Utils;
 using static CreateSpawn.CreateSpawn;
 
 namespace CreateSpawn;
