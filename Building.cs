@@ -20,13 +20,7 @@ public class Building
     public List<FPlatters> FoodPlatters { get; set; } //盘子
     public List<DDolls> DisplayDolls { get; set; } //人偶
     public List<HatRacks> HatRacks { get; set; } //衣帽架
-    public List<LogicSensors> LogicSensors { get; set; }
-}
-
-public class LogicSensors
-{
-    public Point Position { get; set; }
-    public TELogicSensor.LogicCheckType type { get; set; }
+    public List<LogicSensors> LogicSensors { get; set; } //逻辑感应器
 }
 
 //箱子物品数据
@@ -72,6 +66,13 @@ public class HatRacks
     public NetItem[] Items;
     public NetItem[] Dyes;
     public Point Position { get; set; }
+}
+
+// 逻辑感应器
+public class LogicSensors
+{
+    public Point Position { get; set; }
+    public TELogicSensor.LogicCheckType type { get; set; }
 }
 
 

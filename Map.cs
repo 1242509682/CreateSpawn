@@ -257,7 +257,7 @@ public class Map
         }
         #endregion
 
-        #region 写入逻辑灯检查类型
+        #region 写入逻辑感应器检查类型
         writer.Write(clip.LogicSensors?.Count ?? 0);
         if (clip.LogicSensors != null)
         {

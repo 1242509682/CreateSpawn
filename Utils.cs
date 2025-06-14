@@ -80,7 +80,7 @@ internal static class Utils
         RestoreWeaponsRack(building.WeaponsRacks, new Point(0, 0));
         RestoreDisplayDoll(building.DisplayDolls, new Point(0, 0));
         RestoreHatRack(building.HatRacks, new Point(0, 0));
-        RestorefoodPlatter(building.LogicSensors, new Point(0, 0));
+        RestoreLogicSensor(building.LogicSensors, new Point(0, 0));
     }
     #endregion
 
@@ -104,7 +104,7 @@ internal static class Utils
         var foodPlatter = new List<FPlatters>(); //盘子物品
         var displayDolls = new List<DDolls>(); //人偶物品
         var hatRacks = new List<HatRacks>();  //衣帽架物品
-        var logicSensor = new List<LogicSensors>();
+        var logicSensor = new List<LogicSensors>(); //逻辑感应器
         for (int x = minX; x <= maxX; x++)
         {
             for (int y = minY; y <= maxY; y++)
@@ -122,7 +122,7 @@ internal static class Utils
                 GetfoodPlatter(foodPlatter, x, y);  //获取盘子的物品
                 GetDisplayDoll(displayDolls, x, y); //获取人偶的物品
                 GetHatRack(hatRacks, x, y); //获取衣帽架物品
-                GetLogicSensor(logicSensor, x, y); //获取逻辑灯开关状态
+                GetLogicSensor(logicSensor, x, y); //获取逻辑感应器开关状态
             }
         }
 
@@ -605,7 +605,7 @@ internal static class Utils
         }
     }
 
-    public static void RestorefoodPlatter(List<LogicSensors> Sensors, Point offset)
+    public static void RestoreLogicSensor(List<LogicSensors> Sensors, Point offset)
     {
         if (Sensors == null || !Sensors.Any()) return;
 

@@ -1,7 +1,7 @@
 # CreateSpawn 复制建筑
 
 - 作者: 少司命 羽学
-- 出处: 无
+- 出处: [CreateSpawn](https://github.com/1242509682/CreateSpawn)
 - 这是一个Tshock服务器插件，主要用于：创建地图时使你的新地图支持复制建筑，使用指令在头顶生成建筑，不再固定为出生点
 
 

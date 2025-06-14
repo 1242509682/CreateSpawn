@@ -161,6 +161,8 @@ public class CreateSpawn : TerrariaPlugin
                 }
             }
 
+        }).ContinueWith(_ =>
+        {
             // 修复家具实体
             FixAll(startX, startX + clip.Width - 1, startY, startY + clip.Height - 1);
             // 修复箱子内物品
@@ -169,15 +171,12 @@ public class CreateSpawn : TerrariaPlugin
             RestoreSignText(clip, baseX, baseY);
             // 修复物品框物品
             RestoreItemFrames(clip.ItemFrames, new Point(baseX, baseY));
-
-        }).ContinueWith(_ =>
-        {
             //修复盘子、武器架、人偶、衣帽架的物品
             RestorefoodPlatter(clip.FoodPlatters, new Point(baseX, baseY));
             RestoreWeaponsRack(clip.WeaponsRacks, new Point(baseX, baseY));
             RestoreDisplayDoll(clip.DisplayDolls, new Point(baseX, baseY));
             RestoreHatRack(clip.HatRacks, new Point(baseX, baseY));
-            RestorefoodPlatter(clip.LogicSensors, new Point(baseX, baseY));
+            RestoreLogicSensor(clip.LogicSensors, new Point(baseX, baseY));
 
             TileHelper.GenAfter();
             int value = GetUnixTimestamp - secondLast;
