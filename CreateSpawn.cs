@@ -15,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 0, 0, 9);
+    public override Version Version => new(1, 0, 1, 0);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴";
     #endregion
 
@@ -157,7 +157,7 @@ public class CreateSpawn : TerrariaPlugin
                         worldY < 0 || worldY >= Main.maxTilesY) continue;
 
                     // 完全复制图格数据
-                    Main.tile[worldX, worldY] = (Terraria.Tile)clip.Tiles![x, y].Clone();
+                    Main.tile[worldX, worldY] = (Tile)clip.Tiles![x, y].Clone();
                 }
             }
 
@@ -167,12 +167,21 @@ public class CreateSpawn : TerrariaPlugin
             RestoreChestItems(clip.ChestItems!, new Point(baseX, baseY));
             // 修复标牌信息
             RestoreSignText(clip, baseX, baseY);
+            // 修复物品框物品
+            RestoreItemFrames(clip.ItemFrames, new Point(baseX, baseY));
 
         }).ContinueWith(_ =>
         {
+            //修复盘子、武器架、人偶、衣帽架的物品
+            RestorefoodPlatter(clip.FoodPlatters, new Point(baseX, baseY));
+            RestoreWeaponsRack(clip.WeaponsRacks, new Point(baseX, baseY));
+            RestoreDisplayDoll(clip.DisplayDolls, new Point(baseX, baseY));
+            RestoreHatRack(clip.HatRacks, new Point(baseX, baseY));
+            RestorefoodPlatter(clip.LogicSensors, new Point(baseX, baseY));
+
             TileHelper.GenAfter();
             int value = GetUnixTimestamp - secondLast;
-            plr.SendSuccessMessage($"已粘贴区域 ({clip.Width}x{clip.Height})，用时{value}秒。");
+            plr.SendSuccessMessage($"已粘贴区域 ({clip.Width} x {clip.Height})，用时{value}秒。");
         });
     }
     #endregion
@@ -186,6 +195,7 @@ public class CreateSpawn : TerrariaPlugin
         {
             //还原前缓存一遍
             SaveOrigTile(plr, startX, startY, endX, endY);
+
             //还原方法
             RollbackBuilding(plr);
 

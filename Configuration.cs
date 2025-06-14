@@ -27,7 +27,7 @@ internal class Configuration
     {
         this.CentreX = 47;
         this.CountY = 57;
-        this.AdjustX = 18;
+        this.AdjustX = 19;
         this.AdjustY = 27;
     }
     #endregion
