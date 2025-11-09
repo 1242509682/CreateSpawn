@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework;
 using Terraria.GameContent.Tile_Entities;
 using Terraria;
 using TShockAPI;
+using static CreateSpawn.CreateSpawn;
 
 namespace CreateSpawn;
 
@@ -94,6 +95,8 @@ public class Map
     #region 把建筑写入到内存方法
     private static void SaveBuilding(BinaryWriter writer, Building clip)
     {
+        // 保存区域名称
+        writer.Write(clip.RegionName ?? "");
         writer.Write(clip.Origin.X);
         writer.Write(clip.Origin.Y);
         writer.Write(clip.Width);
@@ -276,6 +279,8 @@ public class Map
     #region 从内存加载建筑方法
     private static Building LoadBuilding(BinaryReader reader)
     {
+        // 读取区域名称
+        string regionName = reader.ReadString();
         int originX = reader.ReadInt32();
         int originY = reader.ReadInt32();
         int width = reader.ReadInt32();
@@ -508,6 +513,7 @@ public class Map
 
         return new Building
         {
+            RegionName = regionName,
             Origin = new Point(originX, originY),
             Width = width,
             Height = height,
@@ -536,7 +542,7 @@ public class Map
     }
     #endregion
 
-    #region 备份并压缩所有 .dat 文件后删除
+    #region 备份并压缩所有 .dat 文件后删除（排除出生点）
     public static void BackupAndDeleteAllDataFiles()
     {
         if (!Directory.Exists(Map.Paths)) return;
@@ -550,9 +556,21 @@ public class Map
         {
             // 创建临时备份文件夹
             Directory.CreateDirectory(backupFolder);
+            // 获取所有 .map 文件，排除配置列表中指定的建筑
+            var filesToBackup = Directory.GetFiles(Map.Paths, "*_cp.map")
+                .Where(file => !Config.IgnoreList.Any(excluded =>
+                 Path.GetFileNameWithoutExtension(file).Equals($"{excluded}_cp", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
 
-            // 将所有 .dat 文件复制到备份文件夹
-            foreach (var file in Directory.GetFiles(Map.Paths, "*_cp.map"))
+            if (filesToBackup.Count == 0)
+            {
+                TShock.Log.ConsoleInfo("没有需要备份的建筑文件");
+                Directory.Delete(backupFolder, recursive: true);
+                return;
+            }
+
+            // 将所有符合条件的文件复制到备份文件夹
+            foreach (var file in filesToBackup)
             {
                 string destFile = Path.Combine(backupFolder, Path.GetFileName(file));
                 File.Copy(file, destFile, overwrite: true);
@@ -561,17 +579,19 @@ public class Map
             // 压缩文件夹为 .zip
             ZipFile.CreateFromDirectory(backupFolder, zipFilePath, CompressionLevel.SmallestSize, false);
 
-            // 删除临时文件夹（不再需要了）
+            // 删除临时文件夹
             Directory.Delete(backupFolder, recursive: true);
 
-            TShock.Log.ConsoleInfo($"已成功备份所有 .map 文件，压缩包保存于:\n {zipFilePath}");
+            TShock.Log.ConsoleInfo($"已成功备份 {filesToBackup.Count} 个建筑文件（排除 {Config.IgnoreList.Count} 个），压缩包保存于:\n {zipFilePath}");
 
-            // 删除原始 .dat 文件
-            foreach (var file in Directory.GetFiles(Map.Paths, "*.map"))
+            // 删除原始文件（排除出生点）
+            int deletedCount = 0;
+            foreach (var file in filesToBackup)
             {
                 try
                 {
                     File.Delete(file);
+                    deletedCount++;
                 }
                 catch (Exception ex)
                 {
@@ -579,13 +599,18 @@ public class Map
                 }
             }
 
-            TShock.Log.ConsoleInfo($"已成功删除所有 .map 文件");
+            TShock.Log.ConsoleInfo($"已成功删除 {deletedCount} 个建筑文件（保留出生点文件）");
+
+            // 显示被保留的建筑列表
+            if (Config.IgnoreList.Count > 0)
+            {
+                TShock.Log.ConsoleInfo($"保留的建筑: {string.Join(", ", Config.IgnoreList)}");
+            }
         }
         catch (Exception ex)
         {
             TShock.Log.ConsoleInfo($"备份和删除过程中出错: {ex.Message}");
         }
     }
-
     #endregion
 }

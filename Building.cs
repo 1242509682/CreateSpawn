@@ -8,6 +8,7 @@ namespace CreateSpawn;
 //剪贴板数据
 public class Building
 {
+    public string RegionName { get; set; } // 区域名称
     public int Width { get; set; }
     public int Height { get; set; }
     public Tile[,]? Tiles { get; set; }

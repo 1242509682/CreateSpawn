@@ -4,6 +4,7 @@ using Terraria.DataStructures;
 using Terraria.GameContent.Tile_Entities;
 using Terraria.ID;
 using TShockAPI;
+using static CreateSpawn.CreateSpawn;
 
 namespace CreateSpawn;
 
@@ -34,6 +35,12 @@ internal static class Utils
 
         var building = stack.Pop();
         Map.SaveBack(plr.Name, stack);
+
+        // 在还原图格之前先移除保护区域
+        if (Config.AutoCreateRegion && !string.IsNullOrEmpty(building.RegionName))
+        {
+            RegionManager.DeleteRegion(plr, building.RegionName);
+        }
 
         // 计算选区边界
         int startX = building.Origin.X;

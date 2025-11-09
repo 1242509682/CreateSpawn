@@ -15,8 +15,8 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 0, 1, 0);
-    public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴";
+    public override Version Version => new(1, 0, 1, 1);
+    public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护";
     #endregion
 
     #region 注册与释放
@@ -46,7 +46,7 @@ public class CreateSpawn : TerrariaPlugin
 
     #region 全局变量
     internal static Configuration Config = new();
-    public static int GetUnixTimestamp => (int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds; 
+    public static int GetUnixTimestamp => (int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
     #endregion
 
     #region 配置重载读取与写入方法
@@ -65,7 +65,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 加载完世界后打开插件开关方法
     private async void GamePost(EventArgs args)
     {
-        if (Config.Enabled)
+        if (Config.SpawnEnabled)
         {
             var name = "出生点";
             var clip = Map.LoadClip(name);
@@ -83,16 +83,16 @@ public class CreateSpawn : TerrariaPlugin
             int startY = spwy - Config.CountY + Config.AdjustY;
 
             // 传入新的坐标
-            await SpawnBuilding(TSPlayer.Server, startX, startY, clip);
+            await SpawnBuilding(TSPlayer.Server, startX, startY, clip, name);
 
-            Config.Enabled = false;
+            Config.SpawnEnabled = false;
             Config.Write();
         }
     }
 
     private void WorldGen_AddGenerationPass_string_WorldGenLegacyMethod(On.Terraria.WorldGen.orig_AddGenerationPass_string_WorldGenLegacyMethod orig, string name, WorldGenLegacyMethod method)
     {
-        Config.Enabled = true;
+        Config.SpawnEnabled = true;
         Config.Write();
         orig(name, method);
     }
@@ -129,7 +129,7 @@ public class CreateSpawn : TerrariaPlugin
     #endregion
 
     #region 生成建筑方法
-    public static Task SpawnBuilding(TSPlayer plr, int startX, int startY, Building clip)
+    public static Task SpawnBuilding(TSPlayer plr, int startX, int startY, Building clip, string BuildName)
     {
         TileHelper.StartGen();
         //缓存 方便粘贴错了还原
@@ -165,18 +165,36 @@ public class CreateSpawn : TerrariaPlugin
         {
             // 修复家具实体
             FixAll(startX, startX + clip.Width - 1, startY, startY + clip.Height - 1);
-            // 修复箱子内物品
-            RestoreChestItems(clip.ChestItems!, new Point(baseX, baseY));
+
+            // 修复家具内存在的物品
+            if (plr.HasPermission(Config.IsAdamin) || Config.FixItem)
+            {
+                // 修复箱子内物品
+                RestoreChestItems(clip.ChestItems!, new Point(baseX, baseY));
+                // 修复物品框物品
+                RestoreItemFrames(clip.ItemFrames, new Point(baseX, baseY));
+                //修复盘子、武器架、人偶、衣帽架的物品
+                RestorefoodPlatter(clip.FoodPlatters, new Point(baseX, baseY));
+                RestoreWeaponsRack(clip.WeaponsRacks, new Point(baseX, baseY));
+                RestoreDisplayDoll(clip.DisplayDolls, new Point(baseX, baseY));
+                RestoreHatRack(clip.HatRacks, new Point(baseX, baseY));
+            }
+
             // 修复标牌信息
             RestoreSignText(clip, baseX, baseY);
-            // 修复物品框物品
-            RestoreItemFrames(clip.ItemFrames, new Point(baseX, baseY));
-            //修复盘子、武器架、人偶、衣帽架的物品
-            RestorefoodPlatter(clip.FoodPlatters, new Point(baseX, baseY));
-            RestoreWeaponsRack(clip.WeaponsRacks, new Point(baseX, baseY));
-            RestoreDisplayDoll(clip.DisplayDolls, new Point(baseX, baseY));
-            RestoreHatRack(clip.HatRacks, new Point(baseX, baseY));
+            // 修复逻辑感应器
             RestoreLogicSensor(clip.LogicSensors, new Point(baseX, baseY));
+
+            // 创建保护区域（使用建筑名_时间格式）
+            if (Config.AutoCreateRegion)
+            {
+                string regionName = RegionManager.CreateRegion(plr, startX, startY, startX + clip.Width - 1, startY + clip.Height - 1, BuildName, clip);
+                // 重要：更新备份栈中的区域名称
+                if (!string.IsNullOrEmpty(regionName))
+                {
+                    RegionManager.UpdateBackupRegionName(plr, regionName);
+                }
+            }
 
             TileHelper.GenAfter();
             int value = GetUnixTimestamp - secondLast;

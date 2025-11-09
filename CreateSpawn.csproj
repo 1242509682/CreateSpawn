@@ -18,6 +18,6 @@
 		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p" />
 		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-68w7-72jg-6qpp" />
 		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-447r-wph3-92pm" />
-		<PackageReference Include="TShock" Version="5.2.4" />
+		<PackageReference Include="TShock" Version="5.2.1" />
     </ItemGroup>
 </Project>
