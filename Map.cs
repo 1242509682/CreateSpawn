@@ -26,41 +26,104 @@ public class Map
     }
     #endregion
 
-    #region 加载原始图格方法
-    public static Stack<Building> LoadBack(string name)
+    #region 操作栈管理
+    public static void SaveOperation(string playerName, BuildOperation operation)
     {
-        string filePath = Path.Combine(Paths, $"{name}_bk.map");
-        if (!File.Exists(filePath)) return new Stack<Building>();
+        string path = Path.Combine(Map.Paths, $"{playerName}_bk.map");
+        var stack = LoadOperations(playerName);
+        stack.Push(operation);
 
-        var stack = new Stack<Building>();
-        using (var fs = GZipRead(filePath))
+        // 限制栈大小，防止无限增长
+        if (stack.Count > 10)
+        {
+            var tempStack = new Stack<BuildOperation>();
+            var array = stack.ToArray();
+            for (int i = Math.Max(0, array.Length - 5); i < array.Length; i++)
+            {
+                tempStack.Push(array[i]);
+            }
+            stack = tempStack;
+        }
+
+        // 使用 GZip 压缩保存
+        using (var fs = GZipWrite(path))
+        using (var writer = new BinaryWriter(fs))
+        {
+            writer.Write(stack.Count);
+            foreach (var op in stack)
+            {
+                writer.Write(op.CreatedRegion ?? "");
+                writer.Write(op.Timestamp.Ticks);
+                writer.Write(op.Area.X);
+                writer.Write(op.Area.Y);
+                writer.Write(op.Area.Width);
+                writer.Write(op.Area.Height);
+                SaveBuilding(writer, op.BeforeState);
+            }
+        }
+    }
+
+    public static Stack<BuildOperation> LoadOperations(string name)
+    {
+        string path = Path.Combine(Map.Paths, $"{name}_bk.map");
+        if (!File.Exists(path))
+            return new Stack<BuildOperation>();
+
+        var stack = new Stack<BuildOperation>();
+        using (var fs = GZipRead(path))
         using (var reader = new BinaryReader(fs))
         {
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
             {
-                stack.Push(LoadBuilding(reader));
+                stack.Push(LoadBuildOperation(reader));
             }
         }
         return stack;
     }
-    #endregion
 
-    #region 保存原始图格方法
-    public static void SaveBack(string name, Stack<Building> stack)
+    public static BuildOperation PopOperation(string name)
     {
-        Directory.CreateDirectory(Paths);
-        string filePath = Path.Combine(Paths, $"{name}_bk.map");
+        var stack = LoadOperations(name);
+        if (stack.Count == 0) return null;
 
-        using (var fs = GZipWrite(filePath))
+        var operation = stack.Pop();
+        string path = Path.Combine(Paths, $"{name}_bk.map");
+        using (var fs = GZipWrite(path))
         using (var writer = new BinaryWriter(fs))
         {
             writer.Write(stack.Count);
-            foreach (var building in stack)
+            foreach (var op in stack)
             {
-                SaveBuilding(writer, building);
+                writer.Write(op.CreatedRegion ?? "");
+                writer.Write(op.Timestamp.Ticks);
+                writer.Write(op.Area.X);
+                writer.Write(op.Area.Y);
+                writer.Write(op.Area.Width);
+                writer.Write(op.Area.Height);
+                SaveBuilding(writer, op.BeforeState);
             }
         }
+        return operation;
+    }
+
+    private static BuildOperation LoadBuildOperation(BinaryReader reader)
+    {
+        var operation = new BuildOperation();
+
+        // 读取基本属性
+        operation.CreatedRegion = reader.ReadString();
+        operation.Timestamp = new DateTime(reader.ReadInt64());
+        int areaX = reader.ReadInt32();
+        int areaY = reader.ReadInt32();
+        int areaWidth = reader.ReadInt32();
+        int areaHeight = reader.ReadInt32();
+        operation.Area = new Rectangle(areaX, areaY, areaWidth, areaHeight);
+
+        // 读取 BeforeState (Building 对象)
+        operation.BeforeState = LoadBuilding(reader);
+
+        return operation;
     }
     #endregion
 

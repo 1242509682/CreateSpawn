@@ -15,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 1, 1);
+    public override Version Version => new(1, 1, 2);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护";
     #endregion
 
@@ -29,6 +29,8 @@ public class CreateSpawn : TerrariaPlugin
         ServerApi.Hooks.GamePostInitialize.Register(this, this.GamePost);
         On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod += WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
         TShockAPI.Commands.ChatCommands.Add(new Command("create.copy", Commands.CMDAsync, "cb", "复制建筑"));
+        ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
+        ServerApi.Hooks.ServerLeave.Register(this, OnServerLeave);
     }
 
     protected override void Dispose(bool disposing)
@@ -39,6 +41,8 @@ public class CreateSpawn : TerrariaPlugin
             ServerApi.Hooks.GamePostInitialize.Deregister(this, this.GamePost);
             On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod -= WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
             TShockAPI.Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == Commands.CMDAsync);
+            ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
+            ServerApi.Hooks.ServerLeave.Deregister(this, OnServerLeave);
         }
         base.Dispose(disposing);
     }
@@ -132,8 +136,28 @@ public class CreateSpawn : TerrariaPlugin
     public static Task SpawnBuilding(TSPlayer plr, int startX, int startY, Building clip, string BuildName)
     {
         TileHelper.StartGen();
-        //缓存 方便粘贴错了还原
-        SaveOrigTile(plr, startX, startY, startX + clip.Width - 1, startY + clip.Height - 1);
+
+        // 1. 保存粘贴前的状态
+        var BeforeState = CopyBuilding(startX, startY, startX + clip.Width - 1, startY + clip.Height - 1);
+
+        // 2. 创建保护区域
+        string RegionName = "";
+        if (Config.AutoCreateRegion)
+        {
+            RegionName = RegionManager.CreateRegion(plr, startX, startY, startX + clip.Width - 1, startY + clip.Height - 1, BuildName, clip);
+        }
+
+        // 3. 创建操作记录
+        var operation = new BuildOperation
+        {
+            BeforeState = BeforeState,
+            CreatedRegion = RegionName,
+            Area = new Rectangle(startX, startY, clip.Width, clip.Height)
+        };
+
+        // 4. 保存操作记录
+        Map.SaveOperation(plr.Name, operation);
+
         int secondLast = GetUnixTimestamp;
 
         // 定义偏移坐标（从原始世界坐标到玩家头顶）
@@ -185,17 +209,6 @@ public class CreateSpawn : TerrariaPlugin
             // 修复逻辑感应器
             RestoreLogicSensor(clip.LogicSensors, new Point(baseX, baseY));
 
-            // 创建保护区域（使用建筑名_时间格式）
-            if (Config.AutoCreateRegion)
-            {
-                string regionName = RegionManager.CreateRegion(plr, startX, startY, startX + clip.Width - 1, startY + clip.Height - 1, BuildName, clip);
-                // 重要：更新备份栈中的区域名称
-                if (!string.IsNullOrEmpty(regionName))
-                {
-                    RegionManager.UpdateBackupRegionName(plr, regionName);
-                }
-            }
-
             TileHelper.GenAfter();
             int value = GetUnixTimestamp - secondLast;
             plr.SendSuccessMessage($"已粘贴区域 ({clip.Width} x {clip.Height})，用时{value}秒。");
@@ -210,11 +223,22 @@ public class CreateSpawn : TerrariaPlugin
         int secondLast = GetUnixTimestamp;
         return Task.Run(delegate
         {
-            //还原前缓存一遍
-            SaveOrigTile(plr, startX, startY, endX, endY);
+            // 1. 获取最后一次操作记录
+            var operation = Map.PopOperation(plr.Name);
+            if (operation == null)
+            {
+                plr.SendErrorMessage("没有可撤销的操作");
+                return;
+            }
 
-            //还原方法
-            RollbackBuilding(plr);
+            // 2. 移除保护区域
+            if (Config.AutoCreateRegion && !string.IsNullOrEmpty(operation.CreatedRegion))
+            {
+                RegionManager.DeleteRegion(plr, operation.CreatedRegion);
+            }
+
+            // 3. 恢复到操作前的状态
+            RollbackBuilding(plr, operation.BeforeState);
 
         }).ContinueWith(delegate
         {
@@ -225,4 +249,16 @@ public class CreateSpawn : TerrariaPlugin
     }
     #endregion
 
+    #region 高亮区域触发事件
+    private void OnGameUpdate(EventArgs args)
+    {
+        MyProjectile.RegionProjectile();
+    }
+
+    private void OnServerLeave(LeaveEventArgs args)
+    {
+        MyProjectile.Stop(args.Who);
+    }
+    #endregion
 }
+

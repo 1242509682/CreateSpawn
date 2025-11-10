@@ -10,45 +10,22 @@ namespace CreateSpawn;
 
 internal static class Utils
 {
-    #region 缓存原始图格
-    public static void SaveOrigTile(TSPlayer plr, int startX, int startY, int endX, int endY)
+    #region 恢复建筑状态
+    public static void RollbackBuilding(TSPlayer plr, Building building)
     {
-        // 使用CopyBuilding方法创建当前选区的原始建筑数据
-        var building = CopyBuilding(startX, startY, endX, endY);
-
-        // 将building对象压入栈中
-        var stack = Map.LoadBack(plr.Name);
-        stack.Push(building);
-        Map.SaveBack(plr.Name, stack);
-    }
-    #endregion
-
-    #region 还原图格实体方法
-    public static void RollbackBuilding(TSPlayer plr)
-    {
-        var stack = Map.LoadBack(plr.Name);
-        if (stack.Count == 0)
+        if (building.Tiles == null)
         {
-            plr.SendErrorMessage("没有可还原的图格");
+            plr.SendErrorMessage("建筑数据为空，无法恢复");
             return;
         }
 
-        var building = stack.Pop();
-        Map.SaveBack(plr.Name, stack);
-
-        // 在还原图格之前先移除保护区域
-        if (Config.AutoCreateRegion && !string.IsNullOrEmpty(building.RegionName))
-        {
-            RegionManager.DeleteRegion(plr, building.RegionName);
-        }
-
-        // 计算选区边界
         int startX = building.Origin.X;
         int startY = building.Origin.Y;
         int endX = startX + building.Width - 1;
         int endY = startY + building.Height - 1;
 
-        if (building.Tiles == null) return;
+        // 调试信息
+        plr.SendInfoMessage($"正在恢复区域: {startX},{startY} 到 {endX},{endY} (大小: {building.Width}x{building.Height})");
 
         // 0. 还原前先销毁当前区域的互动家具实体
         KillAll(startX, endX, startY, endY);
@@ -65,14 +42,16 @@ internal static class Utils
                     worldY < 0 || worldY >= Main.maxTilesY) continue;
 
                 Main.tile[worldX, worldY].CopyFrom(building.Tiles[x, y]);
-                TSPlayer.All.SendTileSquareCentered(worldX, worldY, 1);
             }
         }
+
+        // 批量发送图格更新（更高效）
+        TSPlayer.All.SendTileSquareCentered(startX + building.Width / 2, startY + building.Height / 2, (byte)Math.Max(building.Width, building.Height));
 
         // 2. 修复实体
         FixAll(startX, endX, startY, endY);
 
-        // 3. 恢复箱子物品（依赖已存在的箱子实体）
+        // 3. 恢复箱子物品
         if (building.ChestItems != null)
         {
             RestoreChestItems(building.ChestItems, new Point(0, 0));
@@ -81,7 +60,7 @@ internal static class Utils
         // 4. 恢复标牌信息
         RestoreSignText(building, 0, 0);
 
-        // 5. 物品框、盘子、武器架、人偶、衣帽架
+        // 5. 恢复其他实体
         RestoreItemFrames(building.ItemFrames, new Point(0, 0));
         RestorefoodPlatter(building.FoodPlatters, new Point(0, 0));
         RestoreWeaponsRack(building.WeaponsRacks, new Point(0, 0));

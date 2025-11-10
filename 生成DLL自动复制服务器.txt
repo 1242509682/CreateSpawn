@@ -1,5 +1,5 @@
-copy bin\Release\net6.0\CreateSpawn.dll C:\Users\羽学\Desktop\TShock\ServerPlugins
-del C:\Users\羽学\Desktop\TShock\tshock\CreateSpawn.json
+copy bin\Release\net6.0\CreateSpawn.dll C:\Users\羽学\Desktop\TShock5\ServerPlugins
+del C:\Users\羽学\Desktop\TShock5\tshock\CreateSpawn.json
 taskkill /F /IM TShock.Server.exe
 
 

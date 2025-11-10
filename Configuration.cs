@@ -15,6 +15,13 @@ internal class Configuration
     public bool FixItem { get; set; } = false;
     [JsonProperty("忽略压缩删除的建筑", Order = -10)]
     public List<string> IgnoreList { get; set; }
+    [JsonProperty("区域默认允许组", Order = -9)]
+    public List<string> AllowGroup { get; set; }
+    [JsonProperty("区域默认允许玩家名", Order = -8)]
+    public List<string> AllowUser { get; set; }
+
+    [JsonProperty("区域高亮弹幕", Order = -5)]
+    public ProjData ShowArea { get; set; } = new ProjData();
 
     [JsonProperty("出生点生成", Order = 0)]
     public bool SpawnEnabled { get; set; } = true;
@@ -31,6 +38,8 @@ internal class Configuration
     public void SetDefault()
     {
         IgnoreList = new List<string>() { "出生点" };
+        AllowGroup = new List<string>() { "superadmin", "owner", "admin", "GM", "服主" };
+        AllowUser = new List<string>() { "羽学" };
         this.CentreX = 47;
         this.CountY = 57;
         this.AdjustX = 18;

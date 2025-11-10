@@ -2,6 +2,7 @@
 using TShockAPI;
 using static CreateSpawn.Utils;
 using static CreateSpawn.CreateSpawn;
+using System.Text;
 
 namespace CreateSpawn;
 
@@ -145,6 +146,7 @@ internal class Commands
                         if (NeedWaitTask()) return;
 
                         string name = plr.Name; // 默认使用玩家自己的名字
+                        string RegionName = name; // 用于区域创建的建筑名称
 
                         // 检查参数是否存在
                         if (args.Parameters.Count > 1)
@@ -153,6 +155,7 @@ internal class Commands
                             if (!string.IsNullOrWhiteSpace(param))
                             {
                                 name = param;
+                                RegionName = param;
                             }
                         }
 
@@ -172,12 +175,14 @@ internal class Commands
 
                             string actualName = clipNames[index - 1];
                             clip = Map.LoadClip(actualName);
+                            RegionName = actualName;
                             plr.SendInfoMessage($"使用索引 {index} 对应的建筑: {actualName}");
                         }
                         else
                         {
                             // 按名称处理
                             clip = Map.LoadClip(name);
+                            RegionName = name; // 如果是名称，则区域建筑名称就是输入的名称
                         }
 
                         if (clip == null)
@@ -195,6 +200,14 @@ internal class Commands
                         {
                             startX = plr.TileX - clip.Width / 2;
                             startY = plr.TileY - clip.Height;
+
+                            // 检查玩家头顶区域是否已经有保护区域
+                            if (RegionManager.IsAreaProtected(plr, startX, startY, clip.Width, clip.Height))
+                            {
+                                plr.SendErrorMessage("该区域已被保护，无法在此处粘贴建筑！");
+                                plr.SendInfoMessage("请移动到没有保护区域的空地再进行粘贴。");
+                                return;
+                            }
                         }
                         else if (plr == TSPlayer.Server) //如果是服务器 则使用出生点
                         {
@@ -202,7 +215,7 @@ internal class Commands
                             startY = Terraria.Main.spawnTileY - Config.CountY + Config.AdjustY;
                         }
 
-                        await SpawnBuilding(plr, startX, startY, clip, name);
+                        await SpawnBuilding(plr, startX, startY, clip, RegionName);
                     }
                     break;
 
@@ -212,7 +225,6 @@ internal class Commands
                 case "还原":
                     {
                         if (NeedWaitTask()) return;
-
                         await AsyncBack(plr, plr.TempPoints[0].X, plr.TempPoints[0].Y, plr.TempPoints[1].X, plr.TempPoints[1].Y);
                     }
                     break;
@@ -247,13 +259,43 @@ internal class Commands
 
                         if (plr.HasPermission(Config.IsAdamin))
                             plr.SendInfoMessage($"可以使用索引号代替完整区域名，例如: /cb del 1 或 /cb up 1 0");
+
+                        if (Config.ShowArea is not null && Config.ShowArea.Enabled)
+                        {
+                            foreach (var r in regions)
+                            {
+                                if (MyProjectile.InRegion(plr, r.Name))
+                                {
+                                    // 切换跑马灯效果
+                                    if (MyProjectile.ProjectilesInfo.ContainsKey(plr.Index))
+                                    {
+                                        MyProjectile.Stop(plr.Index);
+                                        plr.SendInfoMessage("已停止区域边界效果。");
+                                    }
+                                    else
+                                    {
+                                        MyProjectile.ProjectilesInfo.Add(plr.Index, new ProjectileManager
+                                        {
+                                            RegionName = r.Name,
+                                            Area = r.Area,
+                                            Timer = 0,
+                                            Position = 0,
+                                            UpdateCount = 0,
+                                            Projectiles = new List<int>()
+                                        });
+
+                                        plr.SendInfoMessage("已启动区域边界效果。");
+                                    }
+
+                                    break;
+                                }
+                            }
+                        }
                     }
                     break;
 
                 case "del":
                     {
-                        if (!plr.HasPermission(Config.IsAdamin)) return;
-
                         if (args.Parameters.Count < 2)
                         {
                             plr.SendErrorMessage("用法: /cb del <索引/区域名称>");
@@ -268,8 +310,6 @@ internal class Commands
 
                 case "up":
                     {
-                        if (!plr.HasPermission(Config.IsAdamin)) return;
-
                         if (args.Parameters.Count < 3)
                         {
                             plr.SendErrorMessage("用法: /cb up <索引/区域名> <操作>");
@@ -301,45 +341,71 @@ internal class Commands
     #region 菜单方法
     private static void HelpCmd(TSPlayer plr)
     {
+        var mess = new StringBuilder(); //用于存储指令内容
+
         var random = new Random();
         Color color = RandomColors(random);
-        
-        if (plr.HasPermission(Config.IsAdamin))
+
+        if (plr.RealPlayer)
         {
-            plr.SendInfoMessage($"复制建筑指令菜单");
-            plr.SendMessage($"/cb on ——启用开服出生点生成", color);
-            plr.SendMessage($"/cb off ——关闭开服出生点生成", color);
-            plr.SendMessage($"/cb s 1 ——敲击或放置一个方块到左上角", color);
-            plr.SendMessage($"/cb s 2 ——敲击或放置一个方块到右下角", color);
-            plr.SendMessage($"/cb add 名字 ——添加建筑(sv)", color);
-            plr.SendMessage($"/cb sp [索引/名字] ——生成建筑(pt)", color);
-            plr.SendMessage($"/cb back ——还原图格(bk)", color);
-            plr.SendMessage($"/cb list ——列出建筑(ls)", color);
-            plr.SendMessage($"/cb r ——列出区域", color);
-            plr.SendMessage($"/cb up [索引/名字] [0或1] [玩家名] [+-组名] ——更新区域", color);
-            plr.SendMessage($"/cb del [索引/名字] ——移除区域", color);
-            plr.SendMessage($"/cb zip ——清空建筑并备份为zip", color);
+            mess.Append("[i:3455][c/AD89D5:复][c/D68ACA:制][c/DF909A:建][c/E5A894:筑][i:3454] " +
+            "[i:3456][C/F2F2C7:开发] [C/BFDFEA:by] [c/00FFFF:羽学] | [c/7CAEDD:少司命][i:3459]\n");
+            if (plr.HasPermission(Config.IsAdamin))
+            {
+                mess.Append($"/cb on ——启用开服出生点生成\n" +
+                            $"/cb off ——关闭开服出生点生成\n" +
+                            $"/cb s 1 ——敲击或放置一个方块到左上角\n" +
+                            $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
+                            $"/cb add 名字 ——添加建筑(sv)\n" +
+                            $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
+                            $"/cb bk ——还原图格\n" +
+                            $"/cb list ——列出建筑(ls)\n" +
+                            $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
+                            $"/cb del [索引/名字] ——移除区域\n" +
+                            $"/cb up [索引/名字] [0或1] [玩家名] [+-组名] ——更新区域\n" +
+                            $"/cb zip ——清空建筑与保护区域并备份为zip\n");
+            }
+            else
+            {
+                mess.Append($"/cb s 1 ——敲击或放置一个方块到左上角\n" +
+                                $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
+                                $"/cb add 名字 ——添加建筑(sv)\n" +
+                                $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
+                                $"/cb bk ——还原图格\n" +
+                                $"/cb list ——列出建筑(ls)\n" +
+                                $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
+                                $"/cb del [索引/名字] ——移除自己的区域\n" +
+                                $"/cb up [索引/名字] [0或1] [玩家名] [+-组名] ——更新自己的区域\n");
+
+            }
         }
         else
         {
-            plr.SendInfoMessage($"复制建筑指令菜单");
-            plr.SendMessage($"/cb s 1 ——敲击或放置一个方块到左上角", color);
-            plr.SendMessage($"/cb s 2 ——敲击或放置一个方块到右下角", color);
-            plr.SendMessage($"/cb add 名字 ——添加建筑(sv)", color);
-            plr.SendMessage($"/cb spawn [索引/名字] ——生成建筑(pt)", color);
-            plr.SendMessage($"/cb back ——还原图格(bk)", color);
-            plr.SendMessage($"/cb list ——列出建筑(ls)", color);
-            plr.SendMessage($"/cb r ——列出区域(r)", color);
+            plr.SendMessage("《复制建筑》", 240, 250, 150);
+            mess.Append($"/cb on ——启用开服出生点生成\n" +
+                        $"/cb off ——关闭开服出生点生成\n" +
+                        $"/cb s 1 ——敲击或放置一个方块到左上角\n" +
+                        $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
+                        $"/cb add 名字 ——添加建筑(sv)\n" +
+                        $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
+                        $"/cb bk ——还原图格\n" +
+                        $"/cb list ——列出建筑(ls)\n" +
+                        $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
+                        $"/cb del [索引/名字] ——移除区域\n" +
+                        $"/cb up [索引/名字] [0或1] [玩家名] [+-组名] ——更新区域\n" +
+                        $"/cb zip ——清空建筑与保护区域并备份为zip");
         }
+
+        plr.SendMessage(mess.ToString(), color);
     }
     #endregion
 
     #region 随机颜色
     private static Color RandomColors(Random random)
     {
-        var r = random.Next(170, 255);
-        var g = random.Next(170, 255);
-        var b = random.Next(170, 255);
+        var r = random.Next(200, 255);
+        var g = random.Next(200, 255);
+        var b = random.Next(150, 200);
         var color = new Color(r, g, b);
         return color;
     }

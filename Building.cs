@@ -5,6 +5,15 @@ using TShockAPI;
 
 namespace CreateSpawn;
 
+//建筑操作记录
+public class BuildOperation
+{
+    public Building BeforeState { get; set; }    // 操作前的状态
+    public string CreatedRegion { get; set; }    // 本次操作创建的区域
+    public DateTime Timestamp { get; set; }      // 操作时间
+    public Rectangle Area { get; set; }          // 操作区域
+}
+
 //剪贴板数据
 public class Building
 {
