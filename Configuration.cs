@@ -7,22 +7,12 @@ internal class Configuration
 {
     public static readonly string FilePath = Path.Combine(TShock.SavePath, "CreateSpawn.json");
 
-    [JsonProperty("管理权限", Order = -12)]
+    [JsonProperty("管理权限", Order = -3)]
     public string IsAdamin { get; set; } = "create.admin";
-    [JsonProperty("复制建筑自动建区域", Order = -12)]
-    public bool AutoCreateRegion { get; set; } = true;
-    [JsonProperty("非管理允许恢复物品", Order = -11)]
+    [JsonProperty("非管理允许恢复物品", Order = -2)]
     public bool FixItem { get; set; } = false;
-    [JsonProperty("忽略压缩删除的建筑", Order = -10)]
+    [JsonProperty("忽略压缩删除的建筑", Order = -1)]
     public List<string> IgnoreList { get; set; }
-    [JsonProperty("区域默认允许组", Order = -9)]
-    public List<string> AllowGroup { get; set; }
-    [JsonProperty("区域默认允许玩家名", Order = -8)]
-    public List<string> AllowUser { get; set; }
-
-    [JsonProperty("区域高亮弹幕", Order = -5)]
-    public ProjData ShowArea { get; set; } = new ProjData();
-
     [JsonProperty("出生点生成", Order = 0)]
     public bool SpawnEnabled { get; set; } = true;
     [JsonProperty("中心X", Order = 1)]
@@ -34,12 +24,23 @@ internal class Configuration
     [JsonProperty("微调Y", Order = 4)]
     public int AdjustY { get; set; } = 0;
 
+    [JsonProperty("复制建筑自动建区域", Order = 5)]
+    public bool AutoCreateRegion { get; set; } = true;
+    [JsonProperty("区域默认允许组", Order = 6)]
+    public List<string> AllowGroup { get; set; }
+    [JsonProperty("区域默认允许玩家名", Order = 7)]
+    public List<string> AllowUser { get; set; }
+    [JsonProperty("区域边界显示", Order = 8)]
+    public ProjData ShowArea { get; set; } = new ProjData();
+    [JsonProperty("区域进入离开提示", Order = 9)]
+    public RegionMessageData RegionMessages { get; set; } = new RegionMessageData();
+
     #region 预设参数方法
     public void SetDefault()
     {
-        IgnoreList = new List<string>() { "出生点" };
-        AllowGroup = new List<string>() { "superadmin", "owner", "admin", "GM", "服主" };
-        AllowUser = new List<string>() { "羽学" };
+        this.IgnoreList = new List<string>() { "出生点" };
+        this.AllowGroup = new List<string>() { "superadmin", "owner", "admin", "GM", "服主" };
+        this.AllowUser = new List<string>() { "羽学" };
         this.CentreX = 47;
         this.CountY = 57;
         this.AdjustX = 18;

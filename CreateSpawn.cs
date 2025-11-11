@@ -15,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 1, 2);
+    public override Version Version => new(1, 1, 3);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护";
     #endregion
 
@@ -30,6 +30,7 @@ public class CreateSpawn : TerrariaPlugin
         On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod += WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
         TShockAPI.Commands.ChatCommands.Add(new Command("create.copy", Commands.CMDAsync, "cb", "复制建筑"));
         ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
+        ServerApi.Hooks.NetGreetPlayer.Register(this, this.OnGreetPlayer);
         ServerApi.Hooks.ServerLeave.Register(this, OnServerLeave);
     }
 
@@ -42,6 +43,7 @@ public class CreateSpawn : TerrariaPlugin
             On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod -= WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
             TShockAPI.Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == Commands.CMDAsync);
             ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
+            ServerApi.Hooks.NetGreetPlayer.Deregister(this, this.OnGreetPlayer);
             ServerApi.Hooks.ServerLeave.Deregister(this, OnServerLeave);
         }
         base.Dispose(disposing);
@@ -249,15 +251,30 @@ public class CreateSpawn : TerrariaPlugin
     }
     #endregion
 
-    #region 高亮区域触发事件
+    #region 区域边界显示 与 访问记录 触发事件
+    internal static RegionTracker RegionTracker = new(); // 区域访问记录追踪器
     private void OnGameUpdate(EventArgs args)
     {
+        // 边界弹幕显示
         MyProjectile.RegionProjectile();
+
+        // 区域检测逻辑
+        RegionTracker.CheckChanges();
+    }
+    #endregion
+
+    #region 玩家进出服事件
+    private void OnGreetPlayer(GreetPlayerEventArgs args)
+    {
+        var plr = TShock.Players[args.Who];
+        RegionTracker.OnPlayerJoin(plr);
     }
 
     private void OnServerLeave(LeaveEventArgs args)
     {
         MyProjectile.Stop(args.Who);
+        // 清理区域追踪器
+        RegionTracker.OnPlayerLeave(args.Who);
     }
     #endregion
 }

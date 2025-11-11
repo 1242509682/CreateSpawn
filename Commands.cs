@@ -254,7 +254,10 @@ internal class Commands
                         for (int i = 0; i < regions.Count; i++)
                         {
                             var region = regions[i];
-                            plr.SendInfoMessage($"{i + 1}. {region.Name} (所有者: {region.Owner}, 范围: {region.Area.X},{region.Area.Y} 到 {region.Area.X + region.Area.Width},{region.Area.Y + region.Area.Height})");
+                            plr.SendMessage($"{i + 1}. [c/15EDDB:{region.Name}]\n" +
+                                $"所有者: [c/4EA4F2:{region.Owner}], 范围: [c/E74F5E:{region.Area.X}]," +
+                                $"[c/E74F5E:{region.Area.Y}] 到 [c/E74F5E:{region.Area.X + region.Area.Width}]," +
+                                $"[c/E74F5E:{region.Area.Y + region.Area.Height}]", 240, 250, 150);
                         }
 
                         if (plr.HasPermission(Config.IsAdamin))
@@ -278,7 +281,7 @@ internal class Commands
                                         {
                                             RegionName = r.Name,
                                             Area = r.Area,
-                                            Timer = 0,
+                                            StopTimer = 0,
                                             Position = 0,
                                             UpdateCount = 0,
                                             Projectiles = new List<int>()

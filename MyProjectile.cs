@@ -15,21 +15,31 @@ public class ProjData
     [JsonProperty("仅管理可用")]
     public bool AdminOnly { get; set; } = false;
     [JsonProperty("弹幕ID")]
-    public int[] ProjList { get; set; } = new int[] 
-    { 
-        IceBolt,FrostBoltSword,FrostBoltSword,AmethystBolt,
-        SapphireBolt,EmeraldBolt,RubyBolt,DiamondBolt
+    public int[] ProjList { get; set; } = new int[]
+    {
+        IceBolt, FrostBoltSword, FrostBoltSword, AmethystBolt,
+        SapphireBolt, EmeraldBolt, RubyBolt, DiamondBolt
     };
+
+    [JsonProperty("弹幕变化(0到5)")]
+    public int DirectionMode { get; set; } = 0; // 0=静止, 1=向外, 2=向内, 3=随机, 4=顺时针切线, 5=逆时针切线
+    [JsonProperty("变化强度")]
+    public float ProjectileSpeed { get; set; } = 10;
+    [JsonProperty("弹幕伤害")]
+    public int Damage { get; set; } = 20;
+
     [JsonProperty("移动速度")]
     public int MoveSpeed { get; set; } = 1;
     [JsonProperty("光带长度")]
     public int BandLength { get; set; } = 5;
     [JsonProperty("更新间隔帧数")]
     public int UpdateInterval { get; set; } = 5;
-    [JsonProperty("弹幕持续时间")]
+    [JsonProperty("弹幕持续帧数")]
     public int LifeTime { get; set; } = 60;
     [JsonProperty("自动停止秒数")]
-    public int AutoStopTime { get; set; } = 0;
+    public int AutoStopTime { get; set; } = 10;
+    [JsonProperty("离开区域停止")]
+    public bool StopWhenLeaveRegion { get; set; } = true;
 }
 
 // 简化的数据结构
@@ -39,7 +49,7 @@ public class ProjectileManager
     public Rectangle Area; // 区域边界
     public int Position; // 当前位置
     public int UpdateCount; // 更新计数器
-    public int Timer;  // 自动停止计时器
+    public int StopTimer;  // 自动停止计时器
     public List<int> Projectiles = new List<int>(); // 当前弹幕索引列表
 }
 
@@ -49,7 +59,7 @@ internal class MyProjectile
     internal static void RegionProjectile()
     {
         // 快速检查是否有任何跑马灯需要更新
-        if (ProjectilesInfo.Count == 0 || Config.ShowArea is null) return;
+        if (ProjectilesInfo.Count == 0 || Config.ShowArea is null || !Config.ShowArea.Enabled) return;
 
         // 使用数组避免字典枚举开销
         var Players = new int[ProjectilesInfo.Count];
@@ -76,9 +86,10 @@ internal class MyProjectile
                 continue;
             }
 
-            // 检查玩家是否仍在区域内
-            if (!InRegion(plr, data.RegionName))
+            // 检查玩家是否仍在区域内（如果启用了离开区域停止）
+            if (Config.ShowArea.StopWhenLeaveRegion && !InRegion(plr, data.RegionName))
             {
+                plr.SendInfoMessage("你已离开区域,边界显示已停止。");
                 Stop(PlayerIndex);
                 continue;
             }
@@ -86,12 +97,24 @@ internal class MyProjectile
             // 自动停止检查
             if (Config.ShowArea.AutoStopTime > 0)
             {
-                data.Timer++;
-                if (data.Timer >= Config.ShowArea.AutoStopTime * 60) // 转换为帧数
+                data.StopTimer++;
+                if (data.StopTimer >= Config.ShowArea.AutoStopTime * 60) // 转换为秒
                 {
                     plr.SendInfoMessage("边界显示已自动停止。");
                     Stop(PlayerIndex);
                     continue;
+                }
+                else if (InRegion(plr, data.RegionName) && data.StopTimer % 60 == 0) // 在建筑内自动停止前每秒发送一次倒计时秒数
+                {
+                    // 计算剩余时间（倒计时）- 将帧转换为秒
+                    int Remaining = Config.ShowArea.AutoStopTime - (data.StopTimer / 60);
+                    // 格式化倒计时文本
+                    string text = $"{Remaining:F0}";
+                    var color = new Color(250, 240, 150);
+                    TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, text,
+                                         (int)color.PackedValue,
+                                         plr.TPlayer.position.X,
+                                         plr.TPlayer.position.Y - 3, 0f, 0);
                 }
             }
 
@@ -113,6 +136,12 @@ internal class MyProjectile
             if (id == null || id.Length == 0)
                 id = new int[] { ProjectileID.TopazBolt };
 
+            // 计算区域中心点（用于方向计算）
+            Vector2 center = new Vector2(
+                (area.X + area.Width / 2f) * 16f + 8f,
+                (area.Y + area.Height / 2f) * 16f + 8f
+            );
+
             // 创建新弹幕（均匀分布在边界上）
             for (int i = 0; i < Config.ShowArea.BandLength; i++)
             {
@@ -124,21 +153,28 @@ internal class MyProjectile
                 // 选择弹幕ID（循环使用数组中的ID）
                 int type = id[i % id.Length];
 
-                // 创建弹幕
+                // 计算弹幕位置
                 float wx = point.X * 16f + 8f;
                 float wy = point.Y * 16f + 8f;
+                Vector2 position = new Vector2(wx, wy);
 
-                int projIndex = Projectile.NewProjectile(Projectile.GetNoneSource(), wx, wy, 0f, 0f, type, 0, 0f, PlayerIndex);
-                var proj = Main.projectile[projIndex];
-                if (projIndex >= 0 && projIndex < Main.maxProjectiles && proj.active)
+                // 计算弹幕速度
+                Vector2 velocity = GetVelocity(position, center, Config.ShowArea.DirectionMode, Config.ShowArea.ProjectileSpeed);
+
+                // 创建弹幕
+                int Index = Projectile.NewProjectile(Projectile.GetNoneSource(), position.X, position.Y, velocity.X, velocity.Y, type, Config.ShowArea.Damage, 0, PlayerIndex);
+
+                var proj = Main.projectile[Index];
+
+                if (Index >= 0 && Index < Main.maxProjectiles && proj.active)
                 {
                     proj.timeLeft = Config.ShowArea.LifeTime;
-                    data.Projectiles.Add(projIndex);
-                    NetMessage.SendData((int)PacketTypes.ProjectileNew, PlayerIndex, -1, null, projIndex);
+                    data.Projectiles.Add(Index);
+                    NetMessage.SendData((int)PacketTypes.ProjectileNew, PlayerIndex, -1, null, Index);
                 }
             }
 
-            data.Position = (pos + Config.ShowArea.MoveSpeed) % total; ;
+            data.Position = (pos + Config.ShowArea.MoveSpeed) % total;
         }
     }
 
@@ -165,7 +201,53 @@ internal class MyProjectile
         }
 
         return point;
-    } 
+    }
+    #endregion
+
+    #region 计算弹幕速度
+    private static Vector2 GetVelocity(Vector2 position, Vector2 center, int directionMode, float speed)
+    {
+        if (speed == 0f) return Vector2.Zero;
+
+        Vector2 direction = Vector2.Zero;
+
+        switch (directionMode)
+        {
+            case 0: // 静止
+                return Vector2.Zero;
+
+            case 1: // 向外
+                direction = Vector2.Normalize(position - center);
+                break;
+
+            case 2: // 向内
+                direction = Vector2.Normalize(center - position);
+                break;
+
+            case 3: // 随机
+                Random rand = new Random();
+                float angle = (float)(rand.NextDouble() * Math.PI * 2);
+                direction = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle));
+                break;
+
+            case 4: // 切线方向（顺时针）
+                Vector2 toCenter = center - position;
+                direction = new Vector2(-toCenter.Y, toCenter.X); // 垂直向量
+                direction = Vector2.Normalize(direction);
+                break;
+
+            case 5: // 切线方向（逆时针）
+                Vector2 toCenter2 = center - position;
+                direction = new Vector2(toCenter2.Y, -toCenter2.X); // 反向垂直向量
+                direction = Vector2.Normalize(direction);
+                break;
+
+            default:
+                return Vector2.Zero;
+        }
+
+        return direction * speed;
+    }
     #endregion
 
     #region 清理弹幕方法
