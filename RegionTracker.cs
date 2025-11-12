@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
 using static CreateSpawn.CreateSpawn;
+using static CreateSpawn.RegionManager;
 
 namespace CreateSpawn;
 
@@ -87,7 +88,8 @@ public class RegionTracker
     // 检查玩家区域变化（基于位置变化）
     private Dictionary<int, PlayerTracker> Players = new();
 
-    public void CheckChanges()
+    #region 区域变化检查方法
+    public void CheckTrackerConditions()
     {
         if (Config is null) return;
         var data = Config.RegionMessages;
@@ -126,16 +128,17 @@ public class RegionTracker
             tracker.LastPosition = Pos;
 
             // 获取区域信息
-            string? currRegion = GetCurrRegion(Pos.X, Pos.Y);
-            string? lastRegion = GetCurrRegion(lastPos.X, lastPos.Y);
+            string? NewRegion = GetCurrRegion(Pos.X, Pos.Y);
+            string? OldRegion = GetCurrRegion(lastPos.X, lastPos.Y);
 
             // 检测所有区域变化情况
-            if (lastRegion != currRegion)
+            if (OldRegion != NewRegion)
             {
-                HandleRegionChange(plr, lastRegion!, currRegion!, data);
+                HandleRegionChange(plr, OldRegion!, NewRegion!, data);
             }
         }
-    }
+    } 
+    #endregion
 
     #region 处理区域变化消息方法
     private void HandleRegionChange(TSPlayer plr, string OldRegion, string NewRegion, RegionMessageData data)
@@ -156,22 +159,22 @@ public class RegionTracker
             UpdateVisitStats(NewRegion, plr.Name);
 
             // 显示访问统计（根据权限检查）
-            bool shouldShowStats = ShouldShowStats(plr, NewRegion, data);
-            if (shouldShowStats && (data.ShowVisitStats || data.ShowTopVisitor || data.ShowLastVisitor))
+            if ((HasRegionPermission(plr, NewRegion) || !data.ShowStatsOnlyToOwnerAndAdmin) &&
+                (data.ShowVisitStats || data.ShowTopVisitor || data.ShowLastVisitor))
             {
                 ShowVisitStatistics(plr, NewRegion, data, lastVisitor);
             }
 
             // 显示区域进入消息
-            var regionInfo = GetRegionInfo(NewRegion);
-            string message = string.Format(data.EnterMessage, regionInfo.Name, regionInfo.Owner);
-            plr.SendMessage(message, color);
+            var RegionInfo = GetRegionInfo(NewRegion);
+            string mess = string.Format(data.EnterMessage, RegionInfo.Name, RegionInfo.Owner);
+            plr.SendMessage(mess, color);
 
             // 更新上一个访客记录（当前玩家成为下一个访客的上一个访客）
             LastVisitors[NewRegion] = new LastVisitorRecord
             {
                 PlayerName = plr.Name,
-                VisitTime = System.DateTime.Now.Ticks
+                VisitTime = DateTime.Now.Ticks
             };
         }
         else if (!string.IsNullOrEmpty(OldRegion) && string.IsNullOrEmpty(NewRegion))
@@ -194,8 +197,8 @@ public class RegionTracker
             UpdateVisitStats(NewRegion, plr.Name);
 
             // 显示访问统计（根据权限检查）
-            bool shouldShowStats = ShouldShowStats(plr, NewRegion, data);
-            if (shouldShowStats && (data.ShowVisitStats || data.ShowTopVisitor || data.ShowLastVisitor))
+            if ((HasRegionPermission(plr, NewRegion) || !data.ShowStatsOnlyToOwnerAndAdmin) &&
+                (data.ShowVisitStats || data.ShowTopVisitor || data.ShowLastVisitor))
             {
                 ShowVisitStatistics(plr, NewRegion, data, lastVisitor);
             }
@@ -214,56 +217,35 @@ public class RegionTracker
     }
     #endregion
 
-    #region 显示访问记录的权限检查方法
-    private bool ShouldShowStats(TSPlayer plr, string RegionName, RegionMessageData data)
-    {
-        // 如果未启用"仅管理或归属者显示"，则对所有玩家显示
-        if (!data.ShowStatsOnlyToOwnerAndAdmin)
-            return true;
-
-        // 检查是否是管理员（拥有任意权限的玩家）
-        if (plr.HasPermission(Config.IsAdamin))
-            return true;
-
-        // 检查是否是区域归属者
-        var Owner = GetRegionOwner(RegionName);
-        if (plr.Name == Owner)
-            return true;
-
-        // 都不满足，不显示统计
-        return false;
-    }
-    #endregion
-
     #region 访问统计相关方法
-    private void UpdateVisitStats(string regionFullName, string playerName)
+    private void UpdateVisitStats(string RegionName, string PlayerName)
     {
-        if (!RegionVisits.ContainsKey(regionFullName))
+        if (!RegionVisits.ContainsKey(RegionName))
         {
-            RegionVisits[regionFullName] = new List<RegionVisitRecord>();
+            RegionVisits[RegionName] = new List<RegionVisitRecord>();
         }
 
-        var visits = RegionVisits[regionFullName];
-        var existingRecord = visits.FirstOrDefault(r => r.PlayerName == playerName);
+        var visits = RegionVisits[RegionName];
+        var Record = visits.FirstOrDefault(r => r.PlayerName == PlayerName);
 
-        if (existingRecord != null)
+        if (Record != null)
         {
             // 更新现有记录 - 只增加访问次数，不更新时间
-            existingRecord.VisitCount++;
+            Record.VisitCount++;
         }
         else
         {
             // 创建新记录
             visits.Add(new RegionVisitRecord
             {
-                PlayerName = playerName,
+                PlayerName = PlayerName,
                 VisitCount = 1,
                 LastVisitTime = System.DateTime.Now.Ticks
             });
         }
 
         // 按访问次数排序
-        RegionVisits[regionFullName] = visits
+        RegionVisits[RegionName] = visits
             .OrderByDescending(r => r.VisitCount)
             .ThenByDescending(r => r.LastVisitTime)
             .ToList();
@@ -271,14 +253,14 @@ public class RegionTracker
     #endregion
 
     #region 显示访问统计信息
-    private void ShowVisitStatistics(TSPlayer plr, string regionFullName, RegionMessageData data, LastVisitorRecord? lastVisitor)
+    private void ShowVisitStatistics(TSPlayer plr, string RegionName, RegionMessageData data, LastVisitorRecord? lastVisitor)
     {
-        if (!RegionVisits.ContainsKey(regionFullName) || !RegionVisits[regionFullName].Any())
+        if (!RegionVisits.ContainsKey(RegionName) || !RegionVisits[RegionName].Any())
             return;
 
-        var visits = RegionVisits[regionFullName];
+        var visits = RegionVisits[RegionName];
         int totalVisits = visits.Sum(r => r.VisitCount);
-        int displayCount = System.Math.Min(data.ShowVisitorCount, visits.Count);
+        int displayCount = Math.Min(data.ShowVisitorCount, visits.Count);
 
         var color = new Color(240, 250, 150);
 
@@ -315,7 +297,32 @@ public class RegionTracker
     }
     #endregion
 
-    #region  格式化时间显示
+    #region 显示指定区域的访客记录(用于rd指令)
+    public void ShowRegionVisitRecords(TSPlayer plr, string regionName)
+    {
+        var data = Config?.RegionMessages;
+        if (data == null) return;
+
+        // 获取区域信息
+        var regionInfo = GetRegionInfo(regionName);
+        var color = new Color(240, 250, 150);
+
+        // 显示区域信息标题
+        plr.SendMessage($"\n区域: [c/478ED2:{regionInfo.Name}] 归属: [c/47D1BE:{regionInfo.Owner}]", color);
+
+        // 获取上一个访客信息
+        LastVisitorRecord? lastVisitor = null;
+        if (LastVisitors.ContainsKey(regionName))
+        {
+            lastVisitor = LastVisitors[regionName];
+        }
+
+        // 直接复用现有的显示逻辑
+        ShowVisitStatistics(plr, regionName, data, lastVisitor);
+    }
+    #endregion
+
+    #region 格式化时间显示
     private string FormatTime(long ticks)
     {
         var time = new System.DateTime(ticks);
@@ -334,24 +341,20 @@ public class RegionTracker
     #endregion
 
     #region 获取区域的总访问次数
-    public int GetTotalVisits(string regionFullName)
+    public int GetTotalVisits(string RegionName)
     {
-        if (RegionVisits.ContainsKey(regionFullName))
+        if (RegionVisits.ContainsKey(RegionName))
         {
-            return RegionVisits[regionFullName].Sum(r => r.VisitCount);
+            return RegionVisits[RegionName].Sum(r => r.VisitCount);
         }
         return 0;
     }
     #endregion
 
     #region 获取区域的访问记录
-    public List<RegionVisitRecord> GetVisitRecords(string regionFullName)
+    public List<RegionVisitRecord> GetVisitRecords(string RegionName)
     {
-        if (RegionVisits.ContainsKey(regionFullName))
-        {
-            return new List<RegionVisitRecord>(RegionVisits[regionFullName]);
-        }
-        return new List<RegionVisitRecord>();
+        return RegionVisits.ContainsKey(RegionName) ? new List<RegionVisitRecord>(RegionVisits[RegionName]) : new List<RegionVisitRecord>();
     }
     #endregion
 
@@ -360,10 +363,7 @@ public class RegionTracker
     {
         if (plr.Index >= 0 && plr.Index < Main.maxPlayers)
         {
-            Players[plr.Index] = new PlayerTracker(
-                plr.Index,
-                new Point(plr.TileX, plr.TileY)
-            );
+            Players[plr.Index] = new PlayerTracker(plr.Index,new Point(plr.TileX, plr.TileY));
         }
     }
 
@@ -374,52 +374,11 @@ public class RegionTracker
     #endregion
 
     #region 获取区域信息
-    private RegionInfo GetRegionInfo(string regionName)
+    private RegionInfo GetRegionInfo(string RegionName)
     {
-        string displayName = GetDisplayName(regionName);
-        string owner = GetRegionOwner(regionName);
+        string displayName = GetDisplayName(RegionName);
+        string owner = GetRegionOwner(RegionName);
         return new RegionInfo { Name = displayName, Owner = owner };
-    }
-    #endregion
-
-    #region 获取区域所有者
-    private string GetRegionOwner(string regionName)
-    {
-        var region = TShock.Regions.GetRegionByName(regionName);
-        return region?.Owner ?? "未知";
-    }
-    #endregion
-
-    #region 获取当前区域
-    private string? GetCurrRegion(int tileX, int tileY)
-    {
-        var regions = TShock.Regions.InAreaRegion(tileX, tileY);
-        if (regions == null || regions.Count() == 0) return null;
-
-        // 使用LINQ查找插件区域
-        return regions.FirstOrDefault(r => IsPluginRegion(r.Name))?.Name ?? null;
-    }
-    #endregion
-
-    #region 判断是否为插件区域
-    private bool IsPluginRegion(string regionName)
-    {
-        return regionName.Contains("_") &&
-               regionName.Length > 1 &&
-               char.IsDigit(regionName[regionName.Length - 1]);
-    }
-    #endregion
-
-    #region 获取显示名称（移除时间戳）
-    private string GetDisplayName(string regionName)
-    {
-        if (regionName.Contains("_"))
-        {
-            int lastUnderscore = regionName.LastIndexOf('_');
-            if (lastUnderscore > 0)
-                return regionName.Substring(0, lastUnderscore);
-        }
-        return regionName;
     }
     #endregion
 }

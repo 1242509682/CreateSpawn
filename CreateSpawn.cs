@@ -50,12 +50,8 @@ public class CreateSpawn : TerrariaPlugin
     }
     #endregion
 
-    #region 全局变量
-    internal static Configuration Config = new();
-    public static int GetUnixTimestamp => (int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
-    #endregion
-
     #region 配置重载读取与写入方法
+    internal static Configuration Config = new();
     private static void ReloadConfig(ReloadEventArgs args = null!)
     {
         LoadConfig();
@@ -135,6 +131,7 @@ public class CreateSpawn : TerrariaPlugin
     #endregion
 
     #region 生成建筑方法
+    public static int GetUnixTimestamp => (int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
     public static Task SpawnBuilding(TSPlayer plr, int startX, int startY, Building clip, string BuildName)
     {
         TileHelper.StartGen();
@@ -259,7 +256,7 @@ public class CreateSpawn : TerrariaPlugin
         MyProjectile.RegionProjectile();
 
         // 区域检测逻辑
-        RegionTracker.CheckChanges();
+        RegionTracker.CheckTrackerConditions();
     }
     #endregion
 

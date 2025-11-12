@@ -176,7 +176,6 @@ internal class Commands
                             string actualName = clipNames[index - 1];
                             clip = Map.LoadClip(actualName);
                             RegionName = actualName;
-                            plr.SendInfoMessage($"使用索引 {index} 对应的建筑: {actualName}");
                         }
                         else
                         {
@@ -196,16 +195,33 @@ internal class Commands
                         int startX = 0;
                         int startY = 0;
 
+                        // 用于获取已存在区域的索引号
+                        string RegionName2 = "";
+                        int Index = -1;
+                        string Owner = "";
+
                         if (plr.RealPlayer) // 如果是真实玩家则当前位置为头顶
                         {
                             startX = plr.TileX - clip.Width / 2;
                             startY = plr.TileY - clip.Height;
 
                             // 检查玩家头顶区域是否已经有保护区域
-                            if (RegionManager.IsAreaProtected(plr, startX, startY, clip.Width, clip.Height))
+                            if (RegionManager.IsAreaProtected(startX, startY, clip.Width, clip.Height, ref RegionName2))
                             {
-                                plr.SendErrorMessage("该区域已被保护，无法在此处粘贴建筑！");
+                                if (!string.IsNullOrEmpty(RegionName2))
+                                {
+                                    Index = RegionManager.GetRegionIndex(RegionName2);
+                                    Owner = RegionManager.GetRegionOwner(RegionName2);
+                                }
+
+                                plr.SendErrorMessage($"出生点已有保护区域 {RegionName2} 无法在此处粘贴建筑！");
                                 plr.SendInfoMessage("请移动到没有保护区域的空地再进行粘贴。");
+
+                                // 如果是管理员或区域所有者 则提示删除指令
+                                if (plr.HasPermission(Config.IsAdamin) || plr.Name == Owner)
+                                {
+                                    plr.SendInfoMessage($"或使用/cb del {Index} 移除！");
+                                }
                                 return;
                             }
                         }
@@ -213,6 +229,20 @@ internal class Commands
                         {
                             startX = Terraria.Main.spawnTileX - Config.CentreX + Config.AdjustX;
                             startY = Terraria.Main.spawnTileY - Config.CountY + Config.AdjustY;
+
+                            // 检查出生点有保护区域
+                            if (RegionManager.IsAreaProtected(startX, startY, clip.Width, clip.Height, ref RegionName2))
+                            {
+                                if (!string.IsNullOrEmpty(RegionName2))
+                                {
+                                    Index = RegionManager.GetRegionIndex(RegionName2);
+                                    Owner = RegionManager.GetRegionOwner(RegionName2);
+                                }
+
+                                TSPlayer.Server.SendErrorMessage($"出生点已有保护区域 {RegionName} 无法在此处粘贴建筑！");
+                                TSPlayer.Server.SendInfoMessage($"可使用/cb del {Index} 移除！");
+                                return;
+                            }
                         }
 
                         await SpawnBuilding(plr, startX, startY, clip, RegionName);
@@ -267,7 +297,7 @@ internal class Commands
                         {
                             foreach (var r in regions)
                             {
-                                if (MyProjectile.InRegion(plr, r.Name))
+                                if (RegionManager.InRegion(plr, r.Name))
                                 {
                                     // 切换跑马灯效果
                                     if (MyProjectile.ProjectilesInfo.ContainsKey(plr.Index))
@@ -294,6 +324,34 @@ internal class Commands
                                 }
                             }
                         }
+                    }
+                    break;
+
+                case "rd":
+                case "record":
+                case "访客":
+                    {
+                        if (args.Parameters.Count < 2)
+                        {
+                            plr.SendErrorMessage("用法: /cb rd <索引/区域名称>");
+                            plr.SendErrorMessage("使用 /cb r 查看区域列表和索引号");
+                            return;
+                        }
+
+                        string Input = args.Parameters[1];
+
+                        var region = RegionManager.ParseRegionInput(plr, Input);
+                        if (region == null) return;
+
+                        if (!RegionManager.HasRegionPermission(plr, region.Name))
+                        {
+                            plr.SendErrorMessage($"你没有权限查看区域 '{region.Name}' 的访客记录");
+                            plr.SendInfoMessage($"该区域的所有者是: {region.Owner}");
+                            return;
+                        }
+
+                        // 直接调用 RegionTracker 的方法
+                        CreateSpawn.RegionTracker.ShowRegionVisitRecords(plr, region.Name);
                     }
                     break;
 
@@ -324,9 +382,9 @@ internal class Commands
                             return;
                         }
 
-                        string regionInput = args.Parameters[1];
-                        string operation = args.Parameters[2];
-                        RegionManager.UpdateRegion(plr, regionInput, operation);
+                        string Index = args.Parameters[1];
+                        string action = args.Parameters[2];
+                        RegionManager.UpdateRegion(plr, Index, action);
                     }
                     break;
 
@@ -364,21 +422,23 @@ internal class Commands
                             $"/cb bk ——还原图格\n" +
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
-                            $"/cb del [索引/名字] ——移除区域\n" +
-                            $"/cb up [索引/名字] [0或1] [玩家名] [+-组名] ——更新区域\n" +
+                            $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
+                            $"/cb del [索引/区域名] ——移除区域\n" +
+                            $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新区域\n" +
                             $"/cb zip ——清空建筑与保护区域并备份为zip\n");
             }
             else
             {
                 mess.Append($"/cb s 1 ——敲击或放置一个方块到左上角\n" +
-                                $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
-                                $"/cb add 名字 ——添加建筑(sv)\n" +
-                                $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
-                                $"/cb bk ——还原图格\n" +
-                                $"/cb list ——列出建筑(ls)\n" +
-                                $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
-                                $"/cb del [索引/名字] ——移除自己的区域\n" +
-                                $"/cb up [索引/名字] [0或1] [玩家名] [+-组名] ——更新自己的区域\n");
+                            $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
+                            $"/cb add 名字 ——添加建筑(sv)\n" +
+                            $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
+                            $"/cb bk ——还原图格\n" +
+                            $"/cb list ——列出建筑(ls)\n" +
+                            $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
+                            $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
+                            $"/cb del [索引/区域名] ——移除自己的区域\n" +
+                            $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新自己的区域\n");
 
             }
         }
@@ -394,8 +454,9 @@ internal class Commands
                         $"/cb bk ——还原图格\n" +
                         $"/cb list ——列出建筑(ls)\n" +
                         $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
-                        $"/cb del [索引/名字] ——移除区域\n" +
-                        $"/cb up [索引/名字] [0或1] [玩家名] [+-组名] ——更新区域\n" +
+                        $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
+                        $"/cb del [索引/区域名] ——移除区域\n" +
+                        $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新区域\n" +
                         $"/cb zip ——清空建筑与保护区域并备份为zip");
         }
 

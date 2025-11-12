@@ -5,6 +5,7 @@ using Terraria.ID;
 using TShockAPI;
 using static Terraria.ID.ProjectileID;
 using static CreateSpawn.CreateSpawn;
+using static CreateSpawn.RegionManager;
 
 namespace CreateSpawn;
 
@@ -280,16 +281,4 @@ internal class MyProjectile
     }
     #endregion
 
-    #region 判断玩家是否在区域
-    public static bool InRegion(TSPlayer plr, string RegionName)
-    {
-        if (plr != null &&
-            plr.Active &&
-            plr.CurrentRegion != null &&
-            plr.CurrentRegion.Name == RegionName)
-            return true;
-
-        return false;
-    }
-    #endregion
 }

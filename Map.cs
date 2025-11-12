@@ -33,18 +33,6 @@ public class Map
         var stack = LoadOperations(playerName);
         stack.Push(operation);
 
-        // 限制栈大小，防止无限增长
-        if (stack.Count > 10)
-        {
-            var tempStack = new Stack<BuildOperation>();
-            var array = stack.ToArray();
-            for (int i = Math.Max(0, array.Length - 5); i < array.Length; i++)
-            {
-                tempStack.Push(array[i]);
-            }
-            stack = tempStack;
-        }
-
         // 使用 GZip 压缩保存
         using (var fs = GZipWrite(path))
         using (var writer = new BinaryWriter(fs))
@@ -69,17 +57,20 @@ public class Map
         if (!File.Exists(path))
             return new Stack<BuildOperation>();
 
-        var stack = new Stack<BuildOperation>();
+        var operations = new List<BuildOperation>();
         using (var fs = GZipRead(path))
         using (var reader = new BinaryReader(fs))
         {
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
             {
-                stack.Push(LoadBuildOperation(reader));
+                operations.Add(LoadBuildOperation(reader));
             }
         }
-        return stack;
+
+        // 反转列表，确保最新操作在栈顶
+        operations.Reverse();
+        return new Stack<BuildOperation>(operations);
     }
 
     public static BuildOperation PopOperation(string name)
@@ -645,16 +636,16 @@ public class Map
             // 删除临时文件夹
             Directory.Delete(backupFolder, recursive: true);
 
-            TShock.Log.ConsoleInfo($"已成功备份 {filesToBackup.Count} 个建筑文件（排除 {Config.IgnoreList.Count} 个），压缩包保存于:\n {zipFilePath}");
+            TShock.Utils.Broadcast($"已成功备份 {filesToBackup.Count} 个建筑文件（排除 {Config.IgnoreList.Count} 个），压缩包保存于:\n {zipFilePath}", 250, 240, 150);
 
             // 删除原始文件（排除出生点）
-            int deletedCount = 0;
+            int DelCount = 0;
             foreach (var file in filesToBackup)
             {
                 try
                 {
                     File.Delete(file);
-                    deletedCount++;
+                    DelCount++;
                 }
                 catch (Exception ex)
                 {
@@ -662,12 +653,12 @@ public class Map
                 }
             }
 
-            TShock.Log.ConsoleInfo($"已成功删除 {deletedCount} 个建筑文件（保留出生点文件）");
+            TShock.Utils.Broadcast($"已成功删除 {DelCount} 个建筑文件（保留出生点文件）", 250, 240, 150);
 
             // 显示被保留的建筑列表
             if (Config.IgnoreList.Count > 0)
             {
-                TShock.Log.ConsoleInfo($"保留的建筑: {string.Join(", ", Config.IgnoreList)}");
+                TShock.Utils.Broadcast($"保留的建筑: {string.Join(", ", Config.IgnoreList)}", 250,240,150);
             }
         }
         catch (Exception ex)
