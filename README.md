@@ -18,6 +18,7 @@
 | /cb bk   | create.copy |      还原建筑覆盖图格      |
 | /cb list   | create.copy |      列出已有建筑     |
 | /cb r   | create.copy |      列出插件区域保护     |
+| /cb rd   | create.copy |      显示指定建筑的访客记录     |
 | /cb del [索引/区域名]  | create.admin |      删除区域保护     |
 | /cb up [索引/区域名] [0/1] [玩家名] [+-组名]   | create.admin |      更新区域保护     |
 | /cb zip   | create.admin |      清空建筑与所有区域保护并备份文件为zip     |

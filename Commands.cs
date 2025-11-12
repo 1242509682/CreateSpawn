@@ -1,8 +1,9 @@
 ﻿using Microsoft.Xna.Framework;
 using TShockAPI;
+using System.Text;
 using static CreateSpawn.Utils;
 using static CreateSpawn.CreateSpawn;
-using System.Text;
+
 
 namespace CreateSpawn;
 
@@ -404,13 +405,12 @@ internal class Commands
     {
         var mess = new StringBuilder(); //用于存储指令内容
 
-        var random = new Random();
-        Color color = RandomColors(random);
-
+        // 先构建消息内容
         if (plr.RealPlayer)
         {
-            mess.Append("[i:3455][c/AD89D5:复][c/D68ACA:制][c/DF909A:建][c/E5A894:筑][i:3454] " +
-            "[i:3456][C/F2F2C7:开发] [C/BFDFEA:by] [c/00FFFF:羽学] | [c/7CAEDD:少司命][i:3459]\n");
+            plr.SendMessage("[i:3455][c/AD89D5:复][c/D68ACA:制][c/DF909A:建][c/E5A894:筑][i:3454] " +
+            "[i:3456][C/F2F2C7:开发] [C/BFDFEA:by] [c/00FFFF:羽学] | [c/7CAEDD:少司命][i:3459]", 240, 250, 150);
+
             if (plr.HasPermission(Config.IsAdamin))
             {
                 mess.Append($"/cb on ——启用开服出生点生成\n" +
@@ -418,13 +418,13 @@ internal class Commands
                             $"/cb s 1 ——敲击或放置一个方块到左上角\n" +
                             $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
                             $"/cb add 名字 ——添加建筑(sv)\n" +
-                            $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
+                            $"/cb sp <索引/名字> ——生成建筑(pt)\n" +
                             $"/cb bk ——还原图格\n" +
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
-                            $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
-                            $"/cb del [索引/区域名] ——移除区域\n" +
-                            $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新区域\n" +
+                            $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
+                            $"/cb del <索引/区域名> ——移除区域\n" +
+                            $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新区域\n" +
                             $"/cb zip ——清空建筑与保护区域并备份为zip\n");
             }
             else
@@ -432,20 +432,42 @@ internal class Commands
                 mess.Append($"/cb s 1 ——敲击或放置一个方块到左上角\n" +
                             $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
                             $"/cb add 名字 ——添加建筑(sv)\n" +
-                            $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
+                            $"/cb sp <索引/名字> ——生成建筑(pt)\n" +
                             $"/cb bk ——还原图格\n" +
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
-                            $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
-                            $"/cb del [索引/区域名] ——移除自己的区域\n" +
-                            $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新自己的区域\n");
-
+                            $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
+                            $"/cb del <索引/区域名> ——移除自己的区域\n" +
+                            $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新自己的区域\n");
             }
+
+            // 现在对消息内容应用渐变色
+            var Text = mess.ToString();
+            var lines = Text.Split('\n');
+            var GradMess = new StringBuilder();
+            var start = new Color(166, 213, 234);
+            var end = new Color(245, 247, 175);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(lines[i]))
+                {
+                    float ratio = (float)i / (lines.Length - 1);
+                    var gradColor = Color.Lerp(start, end, ratio);
+
+                    // 将颜色转换为十六进制格式
+                    string colorHex = $"{gradColor.R:X2}{gradColor.G:X2}{gradColor.B:X2}";
+
+                    // 使用颜色标签包装每一行
+                    GradMess.AppendLine($"[c/{colorHex}:{lines[i]}]");
+                }
+            }
+
+            plr.SendMessage(GradMess.ToString(), 240, 250, 150);
         }
         else
         {
-            plr.SendMessage("《复制建筑》", 240, 250, 150);
-            mess.Append($"/cb on ——启用开服出生点生成\n" +
+            plr.SendMessage("《复制建筑》\n" +
+                        $"/cb on ——启用开服出生点生成\n" +
                         $"/cb off ——关闭开服出生点生成\n" +
                         $"/cb s 1 ——敲击或放置一个方块到左上角\n" +
                         $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
@@ -457,10 +479,8 @@ internal class Commands
                         $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
                         $"/cb del [索引/区域名] ——移除区域\n" +
                         $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新区域\n" +
-                        $"/cb zip ——清空建筑与保护区域并备份为zip");
+                        $"/cb zip ——清空建筑与保护区域并备份为zip", 240, 250, 150);
         }
-
-        plr.SendMessage(mess.ToString(), color);
     }
     #endregion
 
