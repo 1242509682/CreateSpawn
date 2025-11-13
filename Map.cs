@@ -667,4 +667,187 @@ public class Map
         }
     }
     #endregion
+
+    #region 访问记录文件管理方法
+    internal static readonly string VisitDataPath = Path.Combine(Paths, "区域访问记录"); // 访问记录存储目录
+
+    // 保存所有访问记录
+    public static void SaveAllRecords()
+    {
+        if (!Config?.VisitRecord?.SaveVisitData == true) return;
+
+        try
+        {
+            Directory.CreateDirectory(VisitDataPath);
+            int savedCount = 0;
+
+            // 保存区域访问记录
+            foreach (var region in RegionTracker.RegionVisits)
+            {
+                string regionName = region.Key;
+                var visits = region.Value;
+
+                LastVisitorRecord lastVisitor = new LastVisitorRecord();
+                if (RegionTracker.LastVisitors.TryGetValue(regionName, out var visitor))
+                {
+                    lastVisitor = visitor;
+                }
+
+                string filePath = Path.Combine(VisitDataPath, $"{regionName}.dat");
+
+                using (var fs = GZipWrite(filePath))
+                using (var writer = new BinaryWriter(fs))
+                {
+                    // 写入访问记录数量
+                    writer.Write(visits.Count);
+
+                    // 写入访问记录
+                    foreach (var visit in visits)
+                    {
+                        writer.Write(visit.PlayerName ?? "");
+                        writer.Write(visit.VisitCount);
+                        writer.Write(visit.LastVisitTime);
+                    }
+
+                    // 写入最后访客记录
+                    writer.Write(lastVisitor.PlayerName ?? "");
+                    writer.Write(lastVisitor.VisitTime);
+                }
+                savedCount++;
+            }
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 保存所有访问记录失败: {ex.Message}");
+        }
+    }
+
+    // 加载所有访问记录
+    public static void LoadAllRecords()
+    {
+        if (!Config?.VisitRecord?.SaveVisitData == true) return;
+
+        try
+        {
+            if (!Directory.Exists(VisitDataPath))
+            {
+                Directory.CreateDirectory(VisitDataPath);
+                return;
+            }
+
+            RegionTracker.RegionVisits.Clear();
+            RegionTracker.LastVisitors.Clear();
+
+            var files = Directory.GetFiles(VisitDataPath, "*.dat");
+            int loadedCount = 0;
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    string regionName = Path.GetFileNameWithoutExtension(file);
+
+                    using (var fs = GZipRead(file))
+                    using (var reader = new BinaryReader(fs))
+                    {
+                        // 读取访问记录
+                        int visitCount = reader.ReadInt32();
+                        var visits = new List<RegionVisitRecord>(visitCount);
+
+                        for (int i = 0; i < visitCount; i++)
+                        {
+                            visits.Add(new RegionVisitRecord
+                            {
+                                PlayerName = reader.ReadString(),
+                                VisitCount = reader.ReadInt32(),
+                                LastVisitTime = reader.ReadInt64()
+                            });
+                        }
+
+                        // 读取最后访客记录
+                        var lastVisitor = new LastVisitorRecord
+                        {
+                            PlayerName = reader.ReadString(),
+                            VisitTime = reader.ReadInt64()
+                        };
+
+                        // 添加到内存
+                        if (visits.Count > 0)
+                        {
+                            RegionTracker.RegionVisits[regionName] = visits;
+                            loadedCount++;
+                        }
+
+                        if (!string.IsNullOrEmpty(lastVisitor.PlayerName))
+                        {
+                            RegionTracker.LastVisitors[regionName] = lastVisitor;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TShock.Log.ConsoleError($"[复制建筑] 加载访问记录文件失败 {file}: {ex.Message}");
+                }
+            }
+
+            TShock.Log.ConsoleInfo($"[复制建筑] 已加载 {loadedCount} 个区域的访问记录");
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 加载所有访问记录失败: {ex.Message}");
+        }
+    }
+
+    // 删除指定区域的访问记录文件
+    public static void DeleteTargetRecord(string regionName)
+    {
+        try
+        {
+            string filePath = Path.Combine(VisitDataPath, $"{regionName}.dat");
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 删除访问记录失败 {regionName}: {ex.Message}");
+        }
+    }
+
+    // 清理所有访问记录文件
+    public static void ClearAllRecords()
+    {
+        try
+        {
+            if (!Directory.Exists(VisitDataPath)) return;
+
+            var files = Directory.GetFiles(VisitDataPath, "*.dat");
+            int deletedCount = 0;
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    File.Delete(file);
+                    deletedCount++;
+                }
+                catch (Exception ex)
+                {
+                    TShock.Log.ConsoleError($"[复制建筑] 删除文件失败 {file}: {ex.Message}");
+                }
+            }
+
+            // 清理内存记录
+            RegionTracker.RegionVisits.Clear();
+            RegionTracker.LastVisitors.Clear();
+
+            TShock.Log.ConsoleInfo($"[复制建筑] 已清理 {deletedCount} 个访问记录文件");
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 清理所有访问记录失败: {ex.Message}");
+        }
+    }
+    #endregion
 }

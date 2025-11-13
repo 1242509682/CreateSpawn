@@ -38,6 +38,9 @@ internal class RegionManager
                 SetNewRegionState(RegionName);
                 clip.RegionName = RegionName;
 
+                // 初始化访客记录 - 创建者作为第一个访客
+                SetDefaultVisitRecord(RegionName, plr.Name);
+
                 TShock.Log.ConsoleInfo($"[复制建筑] 为建筑 '{BuildName}' 创建保护区域: {RegionName}");
                 return RegionName;
             }
@@ -67,6 +70,50 @@ internal class RegionManager
     }
     #endregion
 
+    #region 初始化访客记录
+    private static void SetDefaultVisitRecord(string RegionName, string creatorName)
+    {
+        try
+        {
+            if (!RegionTracker.RegionVisits.ContainsKey(RegionName))
+            {
+                RegionTracker.RegionVisits[RegionName] = new List<RegionVisitRecord>();
+            }
+
+            // 添加创建者作为第一个访客
+            var visits = RegionTracker.RegionVisits[RegionName];
+            var existingRecord = visits.FirstOrDefault(r => r.PlayerName == creatorName);
+
+            if (existingRecord == null)
+            {
+                visits.Add(new RegionVisitRecord
+                {
+                    PlayerName = creatorName,
+                    VisitCount = 1,
+                    LastVisitTime = DateTime.Now.Ticks
+                });
+            }
+
+            // 设置最后访客
+            RegionTracker.LastVisitors[RegionName] = new LastVisitorRecord
+            {
+                PlayerName = creatorName,
+                VisitTime = DateTime.Now.Ticks
+            };
+
+            // 立即保存记录
+            if (Config?.VisitRecord?.SaveVisitData == true)
+            {
+                Map.SaveAllRecords();
+            }
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 初始化访客记录失败: {ex}");
+        }
+    } 
+    #endregion
+
     #region 清理区域名称中的非法字符
     private static string ClearRegionName(string name)
     {
@@ -83,7 +130,14 @@ internal class RegionManager
         {
             var regions = GetPluginRegions();
             int count = regions.Count(region => TShock.Regions.DeleteRegion(region.Name));
-            TShock.Utils.Broadcast($"[复制建筑] 已清理 {count} 个保护区域",250,240,150);
+
+            // 清理访问记录
+            if (Config.ClearAllVisit)
+            {
+                Map.ClearAllRecords(); 
+            }
+
+            TShock.Utils.Broadcast($"[复制建筑] 已清理 {count} 个保护区域", 250, 240, 150);
         }
         catch (Exception ex)
         {
@@ -350,7 +404,7 @@ internal class RegionManager
     }
     #endregion
 
-    #region 检查是否为管理员区域(暂未使用)
+    #region 检查是否为管理员区域
     public static bool IsAdminRegion(string owner)
     {
         var account = TShock.UserAccounts.GetUserAccountByName(owner);
@@ -358,6 +412,6 @@ internal class RegionManager
 
         var group = TShock.Groups.GetGroupByName(account.Group);
         return group != null && group.HasPermission(Config.IsAdamin);
-    } 
+    }
     #endregion
 }

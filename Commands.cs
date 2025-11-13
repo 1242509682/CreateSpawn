@@ -1,8 +1,8 @@
-﻿using Microsoft.Xna.Framework;
+﻿using System.Text;
+using Microsoft.Xna.Framework;
 using TShockAPI;
-using System.Text;
-using static CreateSpawn.Utils;
 using static CreateSpawn.CreateSpawn;
+using static CreateSpawn.Utils;
 
 
 namespace CreateSpawn;
@@ -28,6 +28,7 @@ internal class Commands
             switch (args.Parameters[0].ToLower())
             {
                 case "on":
+                case "开启":
                     {
                         if (!plr.HasPermission(Config.IsAdamin)) return;
 
@@ -39,6 +40,7 @@ internal class Commands
                     break;
 
                 case "off":
+                case "关闭":
                     {
                         if (!plr.HasPermission(Config.IsAdamin)) return;
 
@@ -50,6 +52,7 @@ internal class Commands
 
                 case "s":
                 case "set":
+                case "设置":
                     if (args.Parameters.Count < 2)
                     {
                         plr.SendInfoMessage($"正确指令：/cb set <1/2> --选择复制的区域");
@@ -143,6 +146,7 @@ internal class Commands
                 case "spawn":
                 case "create":
                 case "paste":
+                case "粘贴":
                     {
                         if (NeedWaitTask()) return;
 
@@ -256,16 +260,16 @@ internal class Commands
                 case "还原":
                     {
                         if (NeedWaitTask()) return;
-                        await AsyncBack(plr, plr.TempPoints[0].X, plr.TempPoints[0].Y, plr.TempPoints[1].X, plr.TempPoints[1].Y);
-                    }
-                    break;
+                        // 先获取操作记录
+                        var operation = Map.PopOperation(plr.Name);
+                        if (operation == null)
+                        {
+                            plr.SendErrorMessage("没有可撤销的操作");
+                            return;
+                        }
 
-                case "zip":
-                case "backup":
-                    {
-                        if (!plr.HasPermission(Config.IsAdamin)) return;
-                        RegionManager.ClearAllRegions();  // 清理所有由本插件创建的区域
-                        Map.BackupAndDeleteAllDataFiles();
+                        await AsyncBack(plr, plr.TempPoints[0].X, plr.TempPoints[0].Y,
+                                       plr.TempPoints[1].X, plr.TempPoints[1].Y, operation);
                     }
                     break;
 
@@ -273,18 +277,18 @@ internal class Commands
                 case "region":
                     {
                         // 查找由本插件创建的区域（名称包含时间戳格式）
-                        var regions = RegionManager.GetPluginRegions();
+                        var Regions = RegionManager.GetPluginRegions();
 
-                        if (regions.Count == 0)
+                        if (Regions.Count == 0)
                         {
                             plr.SendInfoMessage("没有找到由复制建筑插件创建的区域。");
                             return;
                         }
 
-                        plr.SendInfoMessage($"由复制建筑插件创建的区域 ({regions.Count} 个):");
-                        for (int i = 0; i < regions.Count; i++)
+                        plr.SendInfoMessage($"由复制建筑插件创建的区域 ({Regions.Count} 个):");
+                        for (int i = 0; i < Regions.Count; i++)
                         {
-                            var region = regions[i];
+                            var region = Regions[i];
                             plr.SendMessage($"{i + 1}. [c/15EDDB:{region.Name}]\n" +
                                 $"所有者: [c/4EA4F2:{region.Owner}], 范围: [c/E74F5E:{region.Area.X}]," +
                                 $"[c/E74F5E:{region.Area.Y}] 到 [c/E74F5E:{region.Area.X + region.Area.Width}]," +
@@ -296,9 +300,9 @@ internal class Commands
 
                         if (Config.ShowArea is not null && Config.ShowArea.Enabled)
                         {
-                            foreach (var r in regions)
+                            foreach (var Region in Regions)
                             {
-                                if (RegionManager.InRegion(plr, r.Name))
+                                if (RegionManager.InRegion(plr, Region.Name))
                                 {
                                     // 切换跑马灯效果
                                     if (MyProjectile.ProjectilesInfo.ContainsKey(plr.Index))
@@ -310,8 +314,8 @@ internal class Commands
                                     {
                                         MyProjectile.ProjectilesInfo.Add(plr.Index, new ProjectileManager
                                         {
-                                            RegionName = r.Name,
-                                            Area = r.Area,
+                                            RegionName = Region.Name,
+                                            Area = Region.Area,
                                             StopTimer = 0,
                                             Position = 0,
                                             UpdateCount = 0,
@@ -320,7 +324,6 @@ internal class Commands
 
                                         plr.SendInfoMessage("已启动区域边界效果。");
                                     }
-
                                     break;
                                 }
                             }
@@ -341,18 +344,18 @@ internal class Commands
 
                         string Input = args.Parameters[1];
 
-                        var region = RegionManager.ParseRegionInput(plr, Input);
-                        if (region == null) return;
+                        var Region = RegionManager.ParseRegionInput(plr, Input);
+                        if (Region == null) return;
 
-                        if (!RegionManager.HasRegionPermission(plr, region.Name))
+                        if (!RegionManager.HasRegionPermission(plr, Region.Name))
                         {
-                            plr.SendErrorMessage($"你没有权限查看区域 '{region.Name}' 的访客记录");
-                            plr.SendInfoMessage($"该区域的所有者是: {region.Owner}");
+                            plr.SendErrorMessage($"你没有权限查看区域 '{Region.Name}' 的访客记录");
+                            plr.SendInfoMessage($"该区域的所有者是: {Region.Owner}");
                             return;
                         }
 
                         // 直接调用 RegionTracker 的方法
-                        CreateSpawn.RegionTracker.ShowRegionVisitRecords(plr, region.Name);
+                        CreateSpawn.RegionTracker.ShowRegionVisitRecords(plr, Region.Name);
                     }
                     break;
 
@@ -365,12 +368,15 @@ internal class Commands
                             return;
                         }
 
-                        string regionInput = args.Parameters[1];
-                        RegionManager.DeleteRegion(plr, regionInput);
+                        string Input = args.Parameters[1];
+                        // 删除区域并同时还原建筑
+                        await AutoClear.DeleteWithBuilding(plr, Input);
                     }
                     break;
 
                 case "up":
+                case "update":
+                case "更新":
                     {
                         if (args.Parameters.Count < 3)
                         {
@@ -386,6 +392,149 @@ internal class Commands
                         string Index = args.Parameters[1];
                         string action = args.Parameters[2];
                         RegionManager.UpdateRegion(plr, Index, action);
+                    }
+                    break;
+
+                case "at":
+                case "auto":
+                case "自动清理":
+                    {
+                        if (!plr.HasPermission(Config.IsAdamin))
+                        {
+                            plr.SendErrorMessage("你没有权限执行自动清理操作");
+                            return;
+                        }
+
+                        if (args.Parameters.Count >= 2)
+                        {
+                            switch (args.Parameters[1].ToLower())
+                            {
+                                case "on":
+                                case "启用":
+                                    Config.AutoClear.Enabled = true;
+                                    Config.Write();
+                                    plr.SendSuccessMessage("已启用自动清理功能");
+                                    break;
+
+                                case "off":
+                                case "关闭":
+                                    Config.AutoClear.Enabled = false;
+                                    Config.Write();
+                                    plr.SendSuccessMessage("已关闭自动清理功能");
+                                    break;
+
+                                case "now":
+                                case "立即":
+                                    // 立即执行清理检查
+                                    _ = AutoClear.CheckAllRegions();
+                                    plr.SendSuccessMessage("已立即执行区域清理检查");
+                                    break;
+
+                                case "ck":
+                                case "st":
+                                case "stats":
+                                case "统计":
+                                    // 显示待清理区域统计
+                                    AutoClear.ShowStats(plr);
+                                    break;
+
+                                case "add":
+                                case "添加":
+                                    // 添加免清理玩家
+                                    if (args.Parameters.Count >= 3)
+                                    {
+                                        AutoClear.AddExempt(plr, args.Parameters[2]);
+                                    }
+                                    else
+                                    {
+                                        plr.SendErrorMessage("用法: /cb auto add <玩家名>");
+                                    }
+                                    break;
+
+                                case "del":
+                                case "remove":
+                                case "删除":
+                                case "移除":
+                                    // 移除免清理玩家
+                                    if (args.Parameters.Count >= 3)
+                                    {
+                                        AutoClear.RemoveExempt(plr, args.Parameters[2]);
+                                    }
+                                    else
+                                    {
+                                        plr.SendErrorMessage("用法: /cb auto remove <玩家名>");
+                                    }
+                                    break;
+
+                                case "l":
+                                case "ls":
+                                case "list":
+                                case "列表":
+                                    // 显示免清理玩家列表
+                                    AutoClear.ShowExemptList(plr);
+                                    break;
+
+                                default:
+                                    plr.SendInfoMessage("用法: /cb auto <on|off|now|stats|test|add|remove|list>");
+                                    plr.SendInfoMessage("on/off - 启用/关闭自动清理");
+                                    plr.SendInfoMessage("now - 立即执行清理");
+                                    plr.SendInfoMessage("ck - 显示待清理区域统计");
+                                    plr.SendInfoMessage("cs - 测试清理单个区域");
+                                    plr.SendInfoMessage("add - 添加免清理玩家");
+                                    plr.SendInfoMessage("del - 移除免清理玩家");
+                                    plr.SendInfoMessage("ls - 显示免清理玩家列表");
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            var mess = new StringBuilder(); //用于存储指令内容
+                            // 显示自动清理配置信息
+                            mess.Append("自动清理配置:\n"+
+                                $"启用: {Config.AutoClear.Enabled} \n" +
+                                $"检查间隔: {Config.AutoClear.CheckSec}秒\n" +
+                                $"清理阈值: {Config.AutoClear.ClearMins}分钟 ({Config.AutoClear.ClearMins / 1440:F1}天)\n" +
+                                $"移除建筑: {Config.AutoClear.ClearBuild}\n" +
+                                $"不清理管理员区域: {Config.AutoClear.ExemptAdmin}\n" +
+                                $"免清理玩家数: {Config.AutoClear.ExemptPlayers.Count}\n" +
+                                "/cb at on|off 切换自动清理开关\n" +
+                                "/cb at ck 查看待清理区域\n" +
+                                "/cb at now 立即执行检查\n" +
+                                "/cb at add 玩家名 添加免清玩家\n" +
+                                "/cb at del 玩家名 移除免清玩家\n" +
+                                "/cb at ls 查看免清理玩家");
+
+                            var Text = mess.ToString();
+                            var lines = Text.Split('\n');
+                            var GradMess = new StringBuilder();
+                            var start = new Color(166, 213, 234);
+                            var end = new Color(245, 247, 175);
+                            for (int i = 0; i < lines.Length; i++)
+                            {
+                                if (!string.IsNullOrEmpty(lines[i]))
+                                {
+                                    float ratio = (float)i / (lines.Length - 1);
+                                    var gradColor = Color.Lerp(start, end, ratio);
+
+                                    // 将颜色转换为十六进制格式
+                                    string colorHex = $"{gradColor.R:X2}{gradColor.G:X2}{gradColor.B:X2}";
+
+                                    // 使用颜色标签包装每一行
+                                    GradMess.AppendLine($"[c/{colorHex}:{lines[i]}]");
+                                }
+                            }
+
+                            plr.SendMessage(GradMess.ToString(), 240, 250, 150);
+                        }
+                    }
+                    break;
+
+                case "zip":
+                case "backup":
+                    {
+                        if (!plr.HasPermission(Config.IsAdamin)) return;
+                        RegionManager.ClearAllRegions();  // 清理所有由本插件创建的区域
+                        Map.BackupAndDeleteAllDataFiles();
                     }
                     break;
 
@@ -423,8 +572,9 @@ internal class Commands
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                             $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
-                            $"/cb del <索引/区域名> ——移除区域\n" +
+                            $"/cb del <索引/区域名> ——移除区域与建筑\n" +
                             $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新区域\n" +
+                            $"/cb at  ——自动清理建筑与区域功能\n" +
                             $"/cb zip ——清空建筑与保护区域并备份为zip\n");
             }
             else
@@ -437,8 +587,9 @@ internal class Commands
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                             $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
-                            $"/cb del <索引/区域名> ——移除自己的区域\n" +
+                            $"/cb del <索引/区域名> ——移除自己的区域与建筑\n" +
                             $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新自己的区域\n");
+                           
             }
 
             // 现在对消息内容应用渐变色
@@ -479,6 +630,7 @@ internal class Commands
                         $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
                         $"/cb del [索引/区域名] ——移除区域\n" +
                         $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新区域\n" +
+                        $"/cb at  ——自动清理建筑与区域功能\n" +
                         $"/cb zip ——清空建筑与保护区域并备份为zip", 240, 250, 150);
         }
     }

@@ -36,18 +36,22 @@ public class LastVisitorRecord
 }
 
 // 配置数据
-public class RegionMessageData
+public class VisitRecordData
 {
     [JsonProperty("启用")]
     public bool Enabled { get; set; } = true;
-    [JsonProperty("检测间隔帧数")]
+    [JsonProperty("保存访问数据")]
+    public bool SaveVisitData { get; set; } = true;
+    [JsonProperty("保存间隔秒数")]
+    public int SaveIntervalSeconds { get; set; } = 600;
+
+    [JsonProperty("检测位置帧数")]
     public int CheckInterval { get; set; } = 60; // 默认60帧≈1秒
     [JsonProperty("进入消息")]
     public string EnterMessage { get; set; } = "\n你进入了建筑区域: [c/478ED2:{0}] 归属: [c/47D1BE:{1}]";
     [JsonProperty("离开消息")]
     public string LeaveMessage { get; set; } = "\n你离开了建筑区域: [c/F17F52:{0}] 归属: [c/47D1BE:{1}]";
 
-    // 新增访问统计配置
     [JsonProperty("显示访问统计")]
     public bool ShowVisitStats { get; set; } = true;
     [JsonProperty("仅管理或归属者显示访问统计")]
@@ -68,6 +72,8 @@ public class RegionMessageData
     public bool ShowLastVisitor { get; set; } = true;
     [JsonProperty("最后访客文本")]
     public string LastVisitorText { get; set; } = "最后访客: [c/FFFFFF:{0}] 于[c/47D3C2:{1}]访问";
+
+
 }
 
 public class RegionTracker
@@ -80,10 +86,10 @@ public class RegionTracker
     }
 
     // 访问统计存储 <区域完整名称, 访问记录列表>
-    private Dictionary<string, List<RegionVisitRecord>> RegionVisits = new();
+    public static Dictionary<string, List<RegionVisitRecord>> RegionVisits = new();
 
     // 上一个访客记录 <区域完整名称, 上一个访客信息>
-    private Dictionary<string, LastVisitorRecord> LastVisitors = new();
+    public static Dictionary<string, LastVisitorRecord> LastVisitors = new();
 
     // 检查玩家区域变化（基于位置变化）
     private Dictionary<int, PlayerTracker> Players = new();
@@ -92,8 +98,10 @@ public class RegionTracker
     public void CheckTrackerConditions()
     {
         if (Config is null) return;
-        var data = Config.RegionMessages;
+        var data = Config.VisitRecord;
         if (data is null || !data.Enabled) return;
+      
+        CheckSaveVisitRecords();   // 检查是否需要保存访问记录
 
         // 优化：使用数组避免字典枚举开销
         var Players = new int[this.Players.Count];
@@ -137,11 +145,28 @@ public class RegionTracker
                 HandleRegionChange(plr, OldRegion!, NewRegion!, data);
             }
         }
-    } 
+    }
+    #endregion
+
+    #region 定期保存访问记录
+    private long SaveTime = DateTime.Now.Ticks;
+    public void CheckSaveVisitRecords()
+    {
+        if (!Config.VisitRecord.SaveVisitData) return;
+
+        long now = DateTime.Now.Ticks;
+        long interval = Config.VisitRecord.SaveIntervalSeconds * TimeSpan.TicksPerSecond;
+
+        if (now - SaveTime >= interval)
+        {
+            Map.SaveAllRecords();
+            SaveTime = now;
+        }
+    }
     #endregion
 
     #region 处理区域变化消息方法
-    private void HandleRegionChange(TSPlayer plr, string OldRegion, string NewRegion, RegionMessageData data)
+    private void HandleRegionChange(TSPlayer plr, string OldRegion, string NewRegion, VisitRecordData data)
     {
         // 定义颜色
         var color = new Color(240, 250, 150);
@@ -253,7 +278,7 @@ public class RegionTracker
     #endregion
 
     #region 显示访问统计信息
-    private void ShowVisitStatistics(TSPlayer plr, string RegionName, RegionMessageData data, LastVisitorRecord? lastVisitor)
+    private void ShowVisitStatistics(TSPlayer plr, string RegionName, VisitRecordData data, LastVisitorRecord? lastVisitor)
     {
         if (!RegionVisits.ContainsKey(RegionName) || !RegionVisits[RegionName].Any())
             return;
@@ -300,8 +325,18 @@ public class RegionTracker
     #region 显示指定区域的访客记录(用于rd指令)
     public void ShowRegionVisitRecords(TSPlayer plr, string regionName)
     {
-        var data = Config?.RegionMessages;
+        var data = Config?.VisitRecord;
         if (data == null) return;
+
+        // 保存一次确保数据同步
+        if (data.SaveVisitData && RegionVisits.ContainsKey(regionName))
+        {
+            var SaveVisitor = new LastVisitorRecord();
+            if (LastVisitors.TryGetValue(regionName, out var visitor))
+            {
+                SaveVisitor = visitor;
+            }
+        }
 
         // 获取区域信息
         var regionInfo = GetRegionInfo(regionName);

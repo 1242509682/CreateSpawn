@@ -15,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 1, 3);
+    public override Version Version => new(1, 1, 4);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护";
     #endregion
 
@@ -90,6 +90,9 @@ public class CreateSpawn : TerrariaPlugin
             Config.SpawnEnabled = false;
             Config.Write();
         }
+
+        AutoClear = new AutoClear(); // 初始化自动清理
+        Map.LoadAllRecords(); // 加载访问记录
     }
 
     private void WorldGen_AddGenerationPass_string_WorldGenLegacyMethod(On.Terraria.WorldGen.orig_AddGenerationPass_string_WorldGenLegacyMethod orig, string name, WorldGenLegacyMethod method)
@@ -127,6 +130,42 @@ public class CreateSpawn : TerrariaPlugin
         }
 
         TShock.Log.ConsoleInfo("[复制建筑] 已初始化默认出生点数据");
+    }
+    #endregion
+
+    #region 游戏更新触发事件
+    internal static AutoClear AutoClear { get; private set; } // 自动清理管理器
+    internal static RegionTracker RegionTracker = new(); // 区域访问记录追踪器
+    private void OnGameUpdate(EventArgs args)
+    {
+        // 区域边界检查
+        MyProjectile.RegionProjectile();
+
+        // 访客记录检查
+        RegionTracker.CheckTrackerConditions();
+
+        // 自动清理检查
+        AutoClear.CheckAutoClear();
+    }
+    #endregion
+
+    #region 玩家进出服事件
+    private void OnGreetPlayer(GreetPlayerEventArgs args)
+    {
+        var plr = TShock.Players[args.Who];
+        RegionTracker.OnPlayerJoin(plr);
+
+        if (Config.VisitRecord.SaveVisitData)
+        Map.SaveAllRecords(); // 保存访客记录
+    }
+
+    private void OnServerLeave(LeaveEventArgs args)
+    {
+        MyProjectile.Stop(args.Who);
+        RegionTracker.OnPlayerLeave(args.Who); // 清理区域追踪器
+
+        if (Config.VisitRecord.SaveVisitData)
+        Map.SaveAllRecords(); // 保存访客记录
     }
     #endregion
 
@@ -216,62 +255,36 @@ public class CreateSpawn : TerrariaPlugin
     #endregion
 
     #region 还原建筑方法
-    public static Task AsyncBack(TSPlayer plr, int startX, int startY, int endX, int endY)
+    public static Task AsyncBack(TSPlayer plr, int startX, int startY, int endX, int endY, BuildOperation operation)
     {
         TileHelper.StartGen();
         int secondLast = GetUnixTimestamp;
+
         return Task.Run(delegate
         {
-            // 1. 获取最后一次操作记录
-            var operation = Map.PopOperation(plr.Name);
+            // 检查操作记录
             if (operation == null)
             {
-                plr.SendErrorMessage("没有可撤销的操作");
+                plr.SendErrorMessage("没有可撤销的操作记录");
                 return;
             }
 
-            // 2. 移除保护区域
+            // 移除保护区域
             if (Config.AutoCreateRegion && !string.IsNullOrEmpty(operation.CreatedRegion))
             {
                 RegionManager.DeleteRegion(plr, operation.CreatedRegion);
+                Map.DeleteTargetRecord(operation.CreatedRegion);
             }
 
-            // 3. 恢复到操作前的状态
+            // 还原建筑
             RollbackBuilding(plr, operation.BeforeState);
 
         }).ContinueWith(delegate
         {
             TileHelper.GenAfter();
             int value = GetUnixTimestamp - secondLast;
-            plr.SendSuccessMessage($"已将选区还原，用时{value}秒。");
+            plr.SendMessage($"[复制建筑] 建筑清理完成，用时{value}秒。", 240, 250, 150);
         });
-    }
-    #endregion
-
-    #region 区域边界显示 与 访问记录 触发事件
-    internal static RegionTracker RegionTracker = new(); // 区域访问记录追踪器
-    private void OnGameUpdate(EventArgs args)
-    {
-        // 边界弹幕显示
-        MyProjectile.RegionProjectile();
-
-        // 区域检测逻辑
-        RegionTracker.CheckTrackerConditions();
-    }
-    #endregion
-
-    #region 玩家进出服事件
-    private void OnGreetPlayer(GreetPlayerEventArgs args)
-    {
-        var plr = TShock.Players[args.Who];
-        RegionTracker.OnPlayerJoin(plr);
-    }
-
-    private void OnServerLeave(LeaveEventArgs args)
-    {
-        MyProjectile.Stop(args.Who);
-        // 清理区域追踪器
-        RegionTracker.OnPlayerLeave(args.Who);
     }
     #endregion
 }
