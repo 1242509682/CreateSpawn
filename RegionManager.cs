@@ -111,7 +111,7 @@ internal class RegionManager
         {
             TShock.Log.ConsoleError($"[复制建筑] 初始化访客记录失败: {ex}");
         }
-    } 
+    }
     #endregion
 
     #region 清理区域名称中的非法字符
@@ -134,7 +134,7 @@ internal class RegionManager
             // 清理访问记录
             if (Config.ClearAllVisit)
             {
-                Map.ClearAllRecords(); 
+                Map.ClearAllRecords();
             }
 
             TShock.Utils.Broadcast($"[复制建筑] 已清理 {count} 个保护区域", 250, 240, 150);

@@ -3,7 +3,7 @@ using Microsoft.Xna.Framework;
 using TShockAPI;
 using static CreateSpawn.CreateSpawn;
 using static CreateSpawn.Utils;
-
+using static CreateSpawn.Condition;
 
 namespace CreateSpawn;
 
@@ -97,13 +97,48 @@ internal class Commands
                             // 加上索引编号（从 1 开始）
                             for (int i = 0; i < clipNames.Count; i++)
                             {
-                                string msg = $"[c/D0AFEB:{i + 1}.] [c/FFFFFF:{clipNames[i]}]";
+                                string buildingName = clipNames[i];
+                                var building = Map.LoadClip(buildingName);
+                                string msg = $"[c/D0AFEB:{i + 1}.] [c/FFFFFF:{buildingName}]";
+
+                                // 显示进度条件
+                                if (building.Conditions != null && building.Conditions.Count > 0)
+                                {
+                                    msg += $"\n[c/FFA500:条件: {string.Join(", ", building.Conditions)}]";
+                                }
+
                                 plr.SendMessage(msg, Color.AntiqueWhite);
                             }
 
                             plr.SendMessage($"可使用指定粘贴指令:[c/D0AFEB:/cb pt 名字]", color);
                             plr.SendMessage($"或使用索引号:[c/D0AFEB:/cb pt 索引号]", color);
                         }
+                    }
+                    break;
+
+                case "cd":
+                case "cond":
+                case "condition":
+                case "条件":
+                case "进度":
+                    {
+                        if (args.Parameters.Count >= 2 && args.Parameters[1].ToLower() == "help")
+                        {
+                            ShowConditionHelp(plr);
+                            break;
+                        }
+
+                        int page = 1;
+                        if (args.Parameters.Count >= 2)
+                        {
+                            if (!int.TryParse(args.Parameters[1], out page) || page < 1)
+                            {
+                                plr.SendErrorMessage("页码必须是正整数！");
+                                return;
+                            }
+                        }
+
+                        ShowConditions(plr, page);
                     }
                     break;
 
@@ -123,9 +158,29 @@ internal class Commands
                         }
 
                         string name = plr.Name; // 默认使用玩家自己的名字
+                        List<string> conditions = new List<string>();
+
                         if (args.Parameters.Count >= 2 && !string.IsNullOrWhiteSpace(args.Parameters[1]))
                         {
                             name = args.Parameters[1]; // 使用指定的名字
+
+                            // 检查是否包含条件参数
+                            if (args.Parameters.Count > 2)
+                            {
+                                // 合并第2个参数之后的所有内容作为条件
+                                string conditionStr = string.Join(" ", args.Parameters.Skip(2));
+
+                                // 支持逗号分隔的多个条件
+                                var conditionList = conditionStr.Split(new[] { ',', '，' }, StringSplitOptions.RemoveEmptyEntries);
+                                foreach (var cond in conditionList)
+                                {
+                                    string trimmedCond = cond.Trim();
+                                    if (!string.IsNullOrEmpty(trimmedCond))
+                                    {
+                                        conditions.Add(trimmedCond);
+                                    }
+                                }
+                            }
                         }
 
                         // 保存到剪贴板
@@ -133,8 +188,20 @@ internal class Commands
                             plr.TempPoints[0].X, plr.TempPoints[0].Y,
                             plr.TempPoints[1].X, plr.TempPoints[1].Y);
 
+                        // 设置进度条件
+                        clip.Conditions = conditions;
+
                         Map.SaveClip(name, clip);
-                        plr.SendSuccessMessage($"已复制区域 ({clip.Width}x{clip.Height})");
+
+                        if (conditions.Count > 0)
+                        {
+                            plr.SendSuccessMessage($"已复制区域 ({clip.Width}x{clip.Height}) [条件: {string.Join(", ", conditions)}]");
+                        }
+                        else
+                        {
+                            plr.SendSuccessMessage($"已复制区域 ({clip.Width}x{clip.Height})");
+                        }
+
                         plr.SendInfoMessage($"粘贴指令:[c/64A1E0:/cb pt]");
                         plr.SendInfoMessage($"撤销指令:[c/64A1E0:/cb bk]");
                         plr.SendInfoMessage($"查建筑表:[c/64A1E0:/cb ls]");
@@ -195,6 +262,18 @@ internal class Commands
                             plr.SendInfoMessage("复制指令:/cb save");
                             plr.SendInfoMessage("查建筑表:/cb list");
                             return;
+                        }
+
+                        // 新增：检查进度条件（管理员无视条件）
+                        if (!plr.HasPermission(Config.IsAdamin) && clip.Conditions != null && clip.Conditions.Count > 0)
+                        {
+                            // 检查条件组中的所有条件是否都满足
+                            if (!CheckGroup(plr.TPlayer, clip.Conditions))
+                            {
+                                plr.SendErrorMessage($"无法粘贴建筑 '{name}'，进度条件未满足！");
+                                plr.SendInfoMessage($"所需条件: {string.Join(", ", clip.Conditions)}");
+                                return;
+                            }
                         }
 
                         int startX = 0;
@@ -549,6 +628,91 @@ internal class Commands
     }
     #endregion
 
+    #region 显示条件列表的方法
+    private static void ShowConditions(TSPlayer plr, int page)
+    {
+        int itemsPerPage = 10; // 每页显示10个条件组
+        int totalGroups = ConditionGroups.Count;
+        int totalPages = (int)Math.Ceiling(totalGroups / (double)itemsPerPage);
+
+        if (page > totalPages)
+        {
+            plr.SendErrorMessage($"只有 {totalPages} 页可用！");
+            return;
+        }
+
+        int startIndex = (page - 1) * itemsPerPage;
+        int endIndex = Math.Min(startIndex + itemsPerPage, totalGroups);
+
+        var groupsToShow = ConditionGroups.Skip(startIndex).Take(itemsPerPage);
+
+        plr.SendMessage($"\n[c/47D3C3:═══ 进度条件列表 (第 {page}/{totalPages} 页) ═══]", Color.Cyan);
+        plr.SendMessage($"[c/FFA500:共 {totalGroups} 个条件组，使用 /cb cd <页码> 翻页]", Color.Orange);
+
+        int index = startIndex + 1;
+        foreach (var group in groupsToShow)
+        {
+            string mainName = group.Key;
+            var aliases = group.Value;
+
+            // 构建显示字符串：主名称 + (别名1,别名2)
+            string displayString = mainName;
+            if (aliases.Count > 1)
+            {
+                // 排除主名称本身，只显示其他别名
+                var otherNames = aliases.Where(a => a != mainName).ToList();
+                if (otherNames.Count > 0)
+                {
+                    displayString += $" ({string.Join(", ", otherNames)})";
+                }
+            }
+
+            plr.SendMessage($"[c/00FF00:{index}.] [c/FFFFFF:{displayString}]", Color.White);
+            index++;
+        }
+
+        // 显示翻页提示
+        if (totalPages > 1)
+        {
+            string pageInfo = $"[c/FFFF00:第 {page}/{totalPages} 页]";
+            if (page < totalPages)
+            {
+                pageInfo += $"[c/00FFFF: - 输入 /cb cd {page + 1} 查看下一页]";
+            }
+            if (page > 1)
+            {
+                pageInfo += $"[c/00FFFF: - 输入 /cb cd {page - 1} 查看上一页]";
+            }
+            plr.SendMessage(pageInfo, Color.Yellow);
+        }
+
+        plr.SendMessage($"[c/FFA500:提示:] /cb add 建筑名 条件1,条件2... 来设置进度限制", Color.Orange);
+        plr.SendMessage($"[c/FFA500:帮助:] /cb cd help", Color.Orange);
+    }
+    #endregion
+
+    #region 显示条件帮助信息
+    private static void ShowConditionHelp(TSPlayer plr)
+    {
+        plr.SendMessage("\n[c/00FFFF:进度条件使用说明]", Color.Cyan);
+        plr.SendMessage("[c/FFFFFF:1. 复制时设置条件:]", Color.White);
+        plr.SendMessage("[c/FFFF00:  /cb add 我的建筑 困难模式,世纪之花]", Color.Yellow);
+        plr.SendMessage("[c/FFFF00:  /cb add 新手建筑 史莱姆王,克眼]", Color.Yellow);
+
+        plr.SendMessage("[c/FFFFFF:2. 粘贴时检查条件:]", Color.White);
+        plr.SendMessage("[c/FFFF00:  只有满足所有条件的玩家才能粘贴建筑]", Color.Yellow);
+        plr.SendMessage("[c/FFFF00:  管理员无视所有条件限制]", Color.Yellow);
+
+        plr.SendMessage("[c/FFFFFF:3. 查看条件列表:]", Color.White);
+        plr.SendMessage("[c/FFFF00:  /cb cond - 查看第一页]", Color.Yellow);
+        plr.SendMessage("[c/FFFF00:  /cb cond 2 - 查看第二页]", Color.Yellow);
+        plr.SendMessage("[c/FFFF00:  /cb cond help - 显示此帮助]", Color.Yellow);
+
+        plr.SendMessage("[c/FFFFFF:4. 同义条件:]", Color.White);
+        plr.SendMessage("[c/FFFF00:  括号内的名称是等效的别名，可以互换使用]", Color.Yellow);
+    }
+    #endregion
+
     #region 菜单方法
     private static void HelpCmd(TSPlayer plr)
     {
@@ -562,8 +726,7 @@ internal class Commands
 
             if (plr.HasPermission(Config.IsAdamin))
             {
-                mess.Append($"/cb on ——启用开服出生点生成\n" +
-                            $"/cb off ——关闭开服出生点生成\n" +
+                mess.Append($"/cb on与off ——启用与关闭开服出生点生成\n" +
                             $"/cb s 1 ——敲击或放置一个方块到左上角\n" +
                             $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
                             $"/cb add 名字 ——添加建筑(sv)\n" +
@@ -575,7 +738,8 @@ internal class Commands
                             $"/cb del <索引/区域名> ——移除区域与建筑\n" +
                             $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新区域\n" +
                             $"/cb at  ——自动清理建筑与区域功能\n" +
-                            $"/cb zip ——清空建筑与保护区域并备份为zip\n");
+                            $"/cb zip ——清空建筑与保护区域并备份为zip\n" +
+                            $"/cb coud  ——显示进度参考(cd)\n");
             }
             else
             {
@@ -588,8 +752,9 @@ internal class Commands
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                             $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
                             $"/cb del <索引/区域名> ——移除自己的区域与建筑\n" +
-                            $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新自己的区域\n");
-                           
+                            $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新自己的区域\n" +
+                            $"/cb coud  ——显示进度参考(cd)\n");
+
             }
 
             // 现在对消息内容应用渐变色
@@ -618,8 +783,7 @@ internal class Commands
         else
         {
             plr.SendMessage("《复制建筑》\n" +
-                        $"/cb on ——启用开服出生点生成\n" +
-                        $"/cb off ——关闭开服出生点生成\n" +
+                        $"/cb on与off ——启用关闭开服出生点生成\n" +
                         $"/cb s 1 ——敲击或放置一个方块到左上角\n" +
                         $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
                         $"/cb add 名字 ——添加建筑(sv)\n" +
@@ -631,6 +795,7 @@ internal class Commands
                         $"/cb del [索引/区域名] ——移除区域\n" +
                         $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新区域\n" +
                         $"/cb at  ——自动清理建筑与区域功能\n" +
+                        $"/cb coud  ——显示进度参考(cd)\n" +
                         $"/cb zip ——清空建筑与保护区域并备份为zip", 240, 250, 150);
         }
     }

@@ -247,7 +247,7 @@ public class AutoClear
         {
             return DateTime.Now.Ticks;
         }
-    } 
+    }
     #endregion
 
     #region 立即执行完整自动清理的检查（用于手动命令）

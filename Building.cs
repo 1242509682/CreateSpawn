@@ -18,6 +18,7 @@ public class BuildOperation
 public class Building
 {
     public string RegionName { get; set; } // 区域名称
+    public List<string> Conditions { get; set; } = new List<string>(); //进度条件
     public int Width { get; set; }
     public int Height { get; set; }
     public Tile[,]? Tiles { get; set; }

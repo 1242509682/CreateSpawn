@@ -174,7 +174,18 @@ public class Map
                 writer.Write(tile.type);
                 writer.Write(tile.wall);
             }
-        } 
+        }
+        #endregion
+
+        #region 写入进度条件
+        writer.Write(clip.Conditions?.Count ?? 0);
+        if (clip.Conditions != null)
+        {
+            foreach (var condition in clip.Conditions)
+            {
+                writer.Write(condition ?? "");
+            }
+        }
         #endregion
 
         #region 写入箱子物品
@@ -191,7 +202,7 @@ public class Map
                 writer.Write(data.Item?.stack ?? 0);
                 writer.Write(data.Item?.prefix ?? 0);
             }
-        } 
+        }
         #endregion
 
         #region 写入标牌信息
@@ -204,7 +215,7 @@ public class Map
                 writer.Write(sign.y - clip.Origin.Y);
                 writer.Write(sign.text ?? "");
             }
-        } 
+        }
         #endregion
 
         #region 写入物品框物品
@@ -219,7 +230,7 @@ public class Map
                 writer.Write(data.Item.Stack);
                 writer.Write(data.Item.PrefixId);
             }
-        } 
+        }
         #endregion
 
         #region 写入武器架物品
@@ -234,7 +245,7 @@ public class Map
                 writer.Write(data.Item.Stack);
                 writer.Write(data.Item.PrefixId);
             }
-        } 
+        }
         #endregion
 
         #region 写入盘子物品
@@ -249,7 +260,7 @@ public class Map
                 writer.Write(data.Item.Stack);
                 writer.Write(data.Item.PrefixId);
             }
-        } 
+        }
         #endregion
 
         #region 写入人偶物品
@@ -280,7 +291,7 @@ public class Map
                     writer.Write(dye.PrefixId);
                 }
             }
-        } 
+        }
         #endregion
 
         #region 写入衣帽架物品
@@ -360,7 +371,16 @@ public class Map
                 };
                 tiles[x, y] = tile;
             }
-        } 
+        }
+        #endregion
+
+        #region 读取进度条件
+        int conditionCount = reader.ReadInt32();
+        var conditions = new List<string>(conditionCount);
+        for (int i = 0; i < conditionCount; i++)
+        {
+            conditions.Add(reader.ReadString());
+        }
         #endregion
 
         #region 读取箱子物品数据
@@ -388,7 +408,7 @@ public class Map
                 Slot = slot,
                 Item = item
             });
-        } 
+        }
         #endregion
 
         #region 读取标牌信息内容
@@ -406,7 +426,7 @@ public class Map
                 y = originY + relY,
                 text = text
             });
-        } 
+        }
         #endregion
 
         #region 读取物品框物品数据
@@ -425,7 +445,7 @@ public class Map
                 Position = new Point(originX + relX, originY + relY),
                 Item = new NetItem(netId, stack, prefix)
             });
-        } 
+        }
         #endregion
 
         #region 读取武器架物品数据
@@ -444,7 +464,7 @@ public class Map
                 Position = new Point(originX + relX, originY + relY),
                 Item = new NetItem(netId, stack, prefix)
             });
-        } 
+        }
         #endregion
 
         #region 读取盘子物品数据
@@ -463,7 +483,7 @@ public class Map
                 Position = new Point(originX + relX, originY + relY),
                 Item = new NetItem(netId, stack, prefix)
             });
-        } 
+        }
         #endregion
 
         #region 读取人偶物品数据
@@ -504,7 +524,7 @@ public class Map
                 Items = items,
                 Dyes = dyes
             });
-        } 
+        }
         #endregion
 
         #region 读取衣帽架物品数据
@@ -560,7 +580,7 @@ public class Map
             logicSensors.Add(new LogicSensors
             {
                 Position = new Point(originX + relX, originY + relY),
-                type = (TELogicSensor.LogicCheckType)reader.ReadInt32()
+                type = (TELogicSensor.LogicCheckType)type
             });
         }
         #endregion
@@ -568,6 +588,7 @@ public class Map
         return new Building
         {
             RegionName = regionName,
+            Conditions = conditions, // 新增
             Origin = new Point(originX, originY),
             Width = width,
             Height = height,
