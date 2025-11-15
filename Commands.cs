@@ -183,6 +183,13 @@ internal class Commands
                             }
                         }
 
+                        // 新增：检查复制区域内是否有受保护建筑，并验证权限
+                        if (!RegionManager.CanCopyFromArea(plr, plr.TempPoints[0].X, plr.TempPoints[0].Y,
+                                            plr.TempPoints[1].X, plr.TempPoints[1].Y))
+                        {
+                            return; // 无法复制，方法内已发送错误信息
+                        }
+
                         // 保存到剪贴板
                         var clip = CopyBuilding(
                             plr.TempPoints[0].X, plr.TempPoints[0].Y,

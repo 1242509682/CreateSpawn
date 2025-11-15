@@ -414,4 +414,33 @@ internal class RegionManager
         return group != null && group.HasPermission(Config.IsAdamin);
     }
     #endregion
+
+    #region 检查是否有权限复制该建筑
+    public static bool CanCopyFromArea(TSPlayer plr, int startX, int startY, int endX, int endY)
+    {
+        // 管理员可以复制任何区域
+        if (plr.HasPermission(Config.IsAdamin)) return true;
+
+        // 检查中心点所在的保护区域
+        var region = TShock.Regions.InAreaRegion((startX + endX) / 2, (startY + endY) / 2)
+                    ?.FirstOrDefault(r => IsPluginRegion(r.Name));
+
+        // 没有保护区域，可以复制
+        if (region == null) return true;
+
+        // 检查玩家是否是区域的所有者
+        if (plr.Name == region.Owner) return true;
+
+        // 检查建筑条件
+        var building = Map.LoadClip(GetDisplayName(region.Name));
+        if (building?.Conditions?.Count > 0 && !Condition.CheckGroup(plr.TPlayer, building.Conditions))
+        {
+            plr.SendErrorMessage($"无法复制！需要满足条件: {string.Join(", ", building.Conditions)}");
+            plr.SendInfoMessage($"该建筑的所有者是: {region.Owner}");
+            return false;
+        }
+
+        return true;
+    }
+    #endregion
 }
