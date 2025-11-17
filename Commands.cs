@@ -10,7 +10,7 @@ namespace CreateSpawn;
 internal class Commands
 {
     #region 主指令方法
-    internal static async void CMDAsync(CommandArgs args)
+    internal static void CreateSpawnCMD(CommandArgs args)
     {
         var plr = args.Player;
         var random = new Random();
@@ -104,7 +104,7 @@ internal class Commands
                                 // 显示进度条件
                                 if (building.Conditions != null && building.Conditions.Count > 0)
                                 {
-                                    msg += $"\n[c/FFA500:条件: {string.Join(", ", building.Conditions)}]";
+                                    msg += $" [c/FFA500:条件: {string.Join(", ", building.Conditions)}]";
                                 }
 
                                 plr.SendMessage(msg, Color.AntiqueWhite);
@@ -183,11 +183,11 @@ internal class Commands
                             }
                         }
 
-                        // 新增：检查复制区域内是否有受保护建筑，并验证权限
+                        // 检查复制区域内是否有受保护建筑，并验证权限
                         if (!RegionManager.CanCopyFromArea(plr, plr.TempPoints[0].X, plr.TempPoints[0].Y,
                                             plr.TempPoints[1].X, plr.TempPoints[1].Y))
                         {
-                            return; // 无法复制，方法内已发送错误信息
+                            return;
                         }
 
                         // 保存到剪贴板
@@ -336,7 +336,7 @@ internal class Commands
                             }
                         }
 
-                        await SpawnBuilding(plr, startX, startY, clip, RegionName);
+                        SpawnBuilding(plr, startX, startY, clip, RegionName);
                     }
                     break;
 
@@ -354,13 +354,97 @@ internal class Commands
                             return;
                         }
 
-                        await AsyncBack(plr, plr.TempPoints[0].X, plr.TempPoints[0].Y,
+                        Back(plr, plr.TempPoints[0].X, plr.TempPoints[0].Y,
                                        plr.TempPoints[1].X, plr.TempPoints[1].Y, operation);
+                    }
+                    break;
+
+                case "qx":
+                case "cancel":
+                case "取消":
+                    {
+                        if (TaskManager.CancelPlayerTask(plr))
+                        {
+                            plr.SendSuccessMessage("已取消当前运行的任务");
+                        }
+                        else
+                        {
+                            plr.SendInfoMessage("没有正在运行的任务");
+                        }
+                    }
+                    break;
+
+                case "kill":
+                case "killall":
+                case "清理任务":
+                    {
+                        if (!plr.HasPermission(Config.IsAdamin))
+                        {
+                            plr.SendErrorMessage("你没有权限执行此操作");
+                            return;
+                        }
+
+                        // 获取当前运行的任务信息
+                        var runningTasks = TaskManager.GetRunningTasksInfo();
+
+                        if (runningTasks.Count == 0)
+                        {
+                            plr.SendInfoMessage("当前没有运行中的任务");
+                            return;
+                        }
+
+                        // 显示正在运行的任务
+                        plr.SendMessage($"当前运行中的任务 ({runningTasks.Count} 个):", Color.Yellow);
+                        for (int i = 0; i < runningTasks.Count; i++)
+                        {
+                            var (playerName, startTime, runningTime) = runningTasks[i];
+                            plr.SendMessage($"{i + 1}. [c/FF6B6B:{playerName}] - 开始于: {startTime:HH:mm:ss} (运行 {runningTime:mm\\:ss} 分钟)", Color.White);
+                        }
+
+                        // 确认执行
+                        plr.SendMessage($"\n确定要终止所有 {runningTasks.Count} 个任务吗？", Color.Orange);
+                        plr.SendMessage("输入 [c/00FF00:/cb kill yes] 确认执行", Color.LightGreen);
+                    }
+                    break;
+
+                case "kill yes":
+                case "kill confirm":
+                case "清理任务 确认":
+                    {
+                        if (!plr.HasPermission(Config.IsAdamin))
+                        {
+                            plr.SendErrorMessage("你没有权限执行此操作");
+                            return;
+                        }
+
+                        int killedCount = TaskManager.KillAllTasks();
+
+                        if (killedCount > 0)
+                        {
+                            plr.SendSuccessMessage($"已强制终止 {killedCount} 个运行中的任务");
+
+                            // 广播给所有在线管理员
+                            foreach (var admin in TShock.Players.Where(p => p?.HasPermission(Config.IsAdamin) == true))
+                            {
+                                if (admin != plr)
+                                {
+                                    admin.SendInfoMessage($"[c/FF6B6B:{plr.Name}] 强制终止了 {killedCount} 个建筑任务");
+                                }
+                            }
+
+                            TShock.Log.ConsoleInfo($"[复制建筑] 管理员 {plr.Name} 强制终止了 {killedCount} 个运行中的任务");
+                        }
+                        else
+                        {
+                            plr.SendInfoMessage("没有需要终止的任务");
+                        }
                     }
                     break;
 
                 case "r":
                 case "region":
+                case "区域":
+                case "领地":
                     {
                         // 查找由本插件创建的区域（名称包含时间戳格式）
                         var Regions = RegionManager.GetPluginRegions();
@@ -446,6 +530,8 @@ internal class Commands
                     break;
 
                 case "del":
+                case "delete":
+                case "删除":
                     {
                         if (args.Parameters.Count < 2)
                         {
@@ -456,7 +542,7 @@ internal class Commands
 
                         string Input = args.Parameters[1];
                         // 删除区域并同时还原建筑
-                        await AutoClear.DeleteWithBuilding(plr, Input);
+                        AutoClear.DeleteWithBuilding(plr, Input);
                     }
                     break;
 
@@ -512,7 +598,7 @@ internal class Commands
                                 case "now":
                                 case "立即":
                                     // 立即执行清理检查
-                                    _ = AutoClear.CheckAllRegions();
+                                    AutoClear.CheckAllRegions();
                                     plr.SendSuccessMessage("已立即执行区域清理检查");
                                     break;
 
@@ -615,8 +701,15 @@ internal class Commands
                     }
                     break;
 
+                case "re":  // 新增的删除命令
+                case "remove":
+                case "移除":
+                    ReCommand(args);
+                    break;
                 case "zip":
                 case "backup":
+                case "压缩":
+                case "备份":
                     {
                         if (!plr.HasPermission(Config.IsAdamin)) return;
                         RegionManager.ClearAllRegions();  // 清理所有由本插件创建的区域
@@ -631,7 +724,83 @@ internal class Commands
         }
 
         bool NeedInGame() => TileHelper.NeedInGame(plr);
-        bool NeedWaitTask() => TileHelper.NeedWaitTask(plr);
+        bool NeedWaitTask() => TaskManager.NeedWaitTask(plr);
+    }
+    #endregion
+
+    #region 删除建筑文件命令
+    private static void ReCommand(CommandArgs args)
+    {
+        var plr = args.Player;
+
+        // 检查权限
+        if (!plr.HasPermission(Config.IsAdamin))
+        {
+            plr.SendErrorMessage("你没有权限删除建筑文件！");
+            return;
+        }
+
+        if (args.Parameters.Count < 2)
+        {
+            plr.SendErrorMessage("语法错误！正确用法: /cb re <建筑名称|索引>");
+            plr.SendErrorMessage("示例: /cb re 我的房子 - 删除名为'我的房子'的建筑文件");
+            plr.SendErrorMessage("示例: /cb re 1 - 删除索引为1的建筑文件");
+            plr.SendInfoMessage("使用 /cb list 查看所有建筑列表和索引");
+            return;
+        }
+
+        string input = args.Parameters[1];
+        string buildingName = input;
+
+        // 检查是否为受保护建筑
+        if (Config.IgnoreList.Contains(input, StringComparer.OrdinalIgnoreCase))
+        {
+            plr.SendErrorMessage($"无法删除受保护建筑 '{input}'，该建筑在保护列表中！");
+            return;
+        }
+
+        // 尝试按索引处理
+        if (int.TryParse(input, out int index))
+        {
+            var buildingNames = Map.GetAllClipNames(); // 复用现有方法
+
+            if (index < 1 || index > buildingNames.Count)
+            {
+                plr.SendErrorMessage($"索引 {index} 无效，可用范围: 1-{buildingNames.Count}");
+                plr.SendInfoMessage("使用 /cb list 查看建筑列表和索引号");
+                return;
+            }
+
+            buildingName = buildingNames[index - 1];
+
+            // 再次检查保护列表（按名称）
+            if (Config.IgnoreList.Contains(buildingName, StringComparer.OrdinalIgnoreCase))
+            {
+                plr.SendErrorMessage($"无法删除受保护建筑 '{buildingName}'，该建筑在保护列表中！");
+                return;
+            }
+        }
+
+        // 检查建筑文件是否存在
+        if (!Map.BuildingExists(buildingName))
+        {
+            plr.SendErrorMessage($"建筑文件 '{buildingName}' 不存在！");
+            plr.SendInfoMessage("使用 /cb list 查看所有可用建筑");
+            return;
+        }
+
+        // 执行删除
+        if (Map.DeleteBuildingFile(buildingName))
+        {
+            plr.SendSuccessMessage($"成功删除建筑文件: {buildingName}");
+
+            // 记录操作日志
+            TShock.Utils.Broadcast($"[复制建筑] 管理员 [c/46D2C2:{plr.Name}] 删除了建筑文件: [c/468DD2:{buildingName}]",240,250,150);
+        }
+        else
+        {
+            plr.SendErrorMessage($"删除建筑文件 '{buildingName}' 时出错！");
+        }
     }
     #endregion
 
@@ -704,7 +873,7 @@ internal class Commands
         plr.SendMessage("\n[c/00FFFF:进度条件使用说明]", Color.Cyan);
         plr.SendMessage("[c/FFFFFF:1. 复制时设置条件:]", Color.White);
         plr.SendMessage("[c/FFFF00:  /cb add 我的建筑 困难模式,世纪之花]", Color.Yellow);
-        plr.SendMessage("[c/FFFF00:  /cb add 新手建筑 史莱姆王,克眼]", Color.Yellow);
+        plr.SendMessage("[c/FFFF00:  /cb add 新手建筑 11,15]", Color.Yellow);
 
         plr.SendMessage("[c/FFFFFF:2. 粘贴时检查条件:]", Color.White);
         plr.SendMessage("[c/FFFF00:  只有满足所有条件的玩家才能粘贴建筑]", Color.Yellow);
@@ -739,14 +908,17 @@ internal class Commands
                             $"/cb add 名字 ——添加建筑(sv)\n" +
                             $"/cb sp <索引/名字> ——生成建筑(pt)\n" +
                             $"/cb bk ——还原图格\n" +
+                            $"/cb qx ——放弃自己放置任务\n" +  // 新增
+                            $"/cb kill ——取消所有人放置任务\n" +  // 新增
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                             $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
                             $"/cb del <索引/区域名> ——移除区域与建筑\n" +
                             $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新区域\n" +
                             $"/cb at  ——自动清理建筑与区域功能\n" +
+                            $"/cb re ——删除指定建筑文件\n" +
                             $"/cb zip ——清空建筑与保护区域并备份为zip\n" +
-                            $"/cb coud  ——显示进度参考(cd)\n");
+                            $"/cb cd  ——显示进度参考(cd)\n");
             }
             else
             {
@@ -755,12 +927,13 @@ internal class Commands
                             $"/cb add 名字 ——添加建筑(sv)\n" +
                             $"/cb sp <索引/名字> ——生成建筑(pt)\n" +
                             $"/cb bk ——还原图格\n" +
+                            $"/cb qx ——放弃自己放置任务\n" +  // 新增
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                             $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
                             $"/cb del <索引/区域名> ——移除自己的区域与建筑\n" +
                             $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新自己的区域\n" +
-                            $"/cb coud  ——显示进度参考(cd)\n");
+                            $"/cb cd  ——显示进度参考(cd)\n");
 
             }
 
@@ -796,13 +969,16 @@ internal class Commands
                         $"/cb add 名字 ——添加建筑(sv)\n" +
                         $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
                         $"/cb bk ——还原图格\n" +
+                        $"/cb qx ——放弃自己放置任务\n" +  // 新增
+                        $"/cb kill ——取消所有人放置任务\n" +  // 新增
                         $"/cb list ——列出建筑(ls)\n" +
                         $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                         $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
                         $"/cb del [索引/区域名] ——移除区域\n" +
                         $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新区域\n" +
                         $"/cb at  ——自动清理建筑与区域功能\n" +
-                        $"/cb coud  ——显示进度参考(cd)\n" +
+                        $"/cb cd  ——显示进度参考(cd)\n" +
+                        $"/cb re ——删除指定建筑文件\n" +
                         $"/cb zip ——清空建筑与保护区域并备份为zip", 240, 250, 150);
         }
     }

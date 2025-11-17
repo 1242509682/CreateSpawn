@@ -689,6 +689,37 @@ public class Map
     }
     #endregion
 
+    #region 删除建筑文件方法
+    public static bool DeleteBuildingFile(string buildingName)
+    {
+        try
+        {
+            // 只删除建筑文件，不删除备份文件
+            string filePath = Path.Combine(Paths, $"{buildingName}_cp.map");
+
+            if (!File.Exists(filePath))
+            {
+                return false;
+            }
+
+            File.Delete(filePath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 删除建筑文件失败 {buildingName}: {ex.Message}");
+            return false;
+        }
+    }
+
+    // 检查建筑文件是否存在
+    public static bool BuildingExists(string buildingName)
+    {
+        string filePath = Path.Combine(Paths, $"{buildingName}_cp.map");
+        return File.Exists(filePath);
+    }
+    #endregion
+
     #region 访问记录文件管理方法
     internal static readonly string VisitDataPath = Path.Combine(Paths, "区域访问记录"); // 访问记录存储目录
 

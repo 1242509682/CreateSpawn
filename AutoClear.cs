@@ -54,12 +54,12 @@ public class AutoClear
         LastCheckTimer = Now;
 
         // 分批处理区域，避免单次处理太多
-        _ = ProcessRegionsBatch();
+        ProcessRegionsBatch();
     }
     #endregion
 
     #region 分批处理区域
-    private async Task ProcessRegionsBatch()
+    private void ProcessRegionsBatch()
     {
         try
         {
@@ -85,7 +85,7 @@ public class AutoClear
                 // 检查是否满足清理条件
                 if (minsSince >= Config.AutoClear.ClearMins)
                 {
-                    if (await ClearRegion(region))
+                    if (ClearRegion(region))
                     {
                         Handle++;
                     }
@@ -251,7 +251,7 @@ public class AutoClear
     #endregion
 
     #region 立即执行完整自动清理的检查（用于手动命令）
-    public static async Task CheckAllRegions()
+    public static void CheckAllRegions()
     {
         try
         {
@@ -273,7 +273,7 @@ public class AutoClear
                 {
                     TShock.Log.ConsoleInfo($"[复制建筑] 区域 {region.Name} 满足清理条件，开始清理");
 
-                    if (await ClearRegion(region))
+                    if (ClearRegion(region))
                     {
                         cleared++;
                         TShock.Log.ConsoleInfo($"[复制建筑] 成功清理区域: {region.Name} (最后访问: {lastVisitTime:yyyy-MM-dd HH:mm})");
@@ -298,15 +298,24 @@ public class AutoClear
     #endregion
 
     #region 清理单个区域（包括还原建筑和删除区域）
-    public static async Task<bool> ClearRegion(Region region)
+    public static bool ClearRegion(Region region)
     {
         try
         {
             string regionName = region.Name;
             string ownerName = region.Owner;
 
+            // 使用服务器玩家执行清理
+            var server = TSPlayer.Server;
+
+            if (TaskManager.IsPlayerTaskRunning(server))
+            {
+                TShock.Log.ConsoleWarn($"[复制建筑] 服务器正忙，跳过清理区域 {regionName}");
+                return false;
+            }
+
             // 1. 先还原建筑
-            bool restored = await RestoreBuilding(regionName, ownerName);
+            bool restored = RestoreBuilding(regionName, ownerName);
 
             // 2. 再删除区域
             bool deleted = TShock.Regions.DeleteRegion(regionName);
@@ -327,7 +336,7 @@ public class AutoClear
     #endregion
 
     #region 还原建筑到粘贴前的状态
-    public static async Task<bool> RestoreBuilding(string regionName, string ownerName)
+    public static bool RestoreBuilding(string regionName, string ownerName)
     {
         try
         {
@@ -348,7 +357,7 @@ public class AutoClear
 
             // 使用服务器玩家身份，但传递操作记录来还原建筑
             var area = operation.Area;
-            await AsyncBack(TSPlayer.Server, area.X, area.Y,
+            Back(TSPlayer.Server, area.X, area.Y,
                           area.X + area.Width - 1, area.Y + area.Height - 1, operation);
 
             TShock.Log.ConsoleInfo($"[复制建筑] 已还原区域 {regionName} 的建筑");
@@ -522,7 +531,7 @@ public class AutoClear
     #endregion
 
     #region 删除区域并同时还原建筑
-    public static async Task DeleteWithBuilding(TSPlayer plr, string Input)
+    public static void DeleteWithBuilding(TSPlayer plr, string Input)
     {
         var region = RegionManager.ParseRegionInput(plr, Input);
         if (region == null) return;
@@ -539,7 +548,7 @@ public class AutoClear
         string ownerName = region.Owner;
 
         // 1. 先还原建筑
-        bool restored = await RestoreForDelete(plr, regionName, ownerName);
+        bool restored = RestoreForDelete(plr, regionName, ownerName);
 
         // 2. 再删除区域
         bool deleted = TShock.Regions.DeleteRegion(regionName);
@@ -561,7 +570,7 @@ public class AutoClear
     #endregion
 
     #region 为删除命令单独写的建筑还原方法
-    public static async Task<bool> RestoreForDelete(TSPlayer plr, string RegionName, string owner)
+    public static bool RestoreForDelete(TSPlayer plr, string RegionName, string owner)
     {
         try
         {
@@ -575,7 +584,7 @@ public class AutoClear
 
             // 使用服务器玩家身份，但传递操作记录
             var area = operation.Area;
-            await AsyncBack(TSPlayer.Server, area.X, area.Y,
+            Back(TSPlayer.Server, area.X, area.Y,
                             area.X + area.Width - 1, area.Y + area.Height - 1, operation);
 
             plr.SendSuccessMessage($"已还原区域 {RegionName} 的建筑");

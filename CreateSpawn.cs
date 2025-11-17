@@ -15,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 1, 5);
+    public override Version Version => new(1, 1, 6);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护、访客统计、自动清理建筑、区域边界显示、进度限制粘贴";
     #endregion
 
@@ -28,7 +28,7 @@ public class CreateSpawn : TerrariaPlugin
         GeneralHooks.ReloadEvent += ReloadConfig;
         ServerApi.Hooks.GamePostInitialize.Register(this, this.GamePost);
         On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod += WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
-        TShockAPI.Commands.ChatCommands.Add(new Command("create.copy", Commands.CMDAsync, "cb", "复制建筑"));
+        TShockAPI.Commands.ChatCommands.Add(new Command("create.copy", Commands.CreateSpawnCMD, "cb", "复制建筑"));
         ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
         ServerApi.Hooks.NetGreetPlayer.Register(this, this.OnGreetPlayer);
         ServerApi.Hooks.ServerLeave.Register(this, OnServerLeave);
@@ -38,10 +38,11 @@ public class CreateSpawn : TerrariaPlugin
     {
         if (disposing)
         {
+            TaskManager.CleanupAllTasks();
             GeneralHooks.ReloadEvent -= ReloadConfig;
             ServerApi.Hooks.GamePostInitialize.Deregister(this, this.GamePost);
             On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod -= WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
-            TShockAPI.Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == Commands.CMDAsync);
+            TShockAPI.Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == Commands.CreateSpawnCMD);
             ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
             ServerApi.Hooks.NetGreetPlayer.Deregister(this, this.OnGreetPlayer);
             ServerApi.Hooks.ServerLeave.Deregister(this, OnServerLeave);
@@ -65,7 +66,7 @@ public class CreateSpawn : TerrariaPlugin
     #endregion
 
     #region 加载完世界后打开插件开关方法
-    private async void GamePost(EventArgs args)
+    private void GamePost(EventArgs args)
     {
         if (Config.SpawnEnabled)
         {
@@ -84,8 +85,12 @@ public class CreateSpawn : TerrariaPlugin
             int startX = spwx - Config.CentreX + Config.AdjustX;
             int startY = spwy - Config.CountY + Config.AdjustY;
 
-            // 传入新的坐标
-            await SpawnBuilding(TSPlayer.Server, startX, startY, clip, name);
+            // 使用 Task.Run 来异步执行
+            Task.Run(() =>
+            {
+                // 生成出生点
+                SpawnBuilding(TSPlayer.Server, startX, startY, clip, name);
+            });
 
             Config.SpawnEnabled = false;
             Config.Write();
@@ -169,11 +174,15 @@ public class CreateSpawn : TerrariaPlugin
     }
     #endregion
 
-    #region 生成建筑方法
+    #region 生成建筑方法（修改为使用TaskManager）
     public static int GetUnixTimestamp => (int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
-    public static Task SpawnBuilding(TSPlayer plr, int startX, int startY, Building clip, string BuildName)
+    public static void SpawnBuilding(TSPlayer plr, int startX, int startY, Building clip, string BuildName)
     {
-        TileHelper.StartGen();
+        if (!TaskManager.StartPlayerTask(plr, out var cts))
+        {
+            plr.SendErrorMessage("您已有一个任务在运行，请等待完成");
+            return;
+        }
 
         // 1. 保存粘贴前的状态
         var BeforeState = CopyBuilding(startX, startY, startX + clip.Width - 1, startY + clip.Height - 1);
@@ -202,88 +211,182 @@ public class CreateSpawn : TerrariaPlugin
         int baseX = startX - clip.Origin.X;
         int baseY = startY - clip.Origin.Y;
 
-        return Task.Run(() =>
+        // 创建实际任务
+        var task = Task.Run(() =>
         {
-            // 先销毁目标区域的互动家具实体
-            KillAll(startX, startX + clip.Width - 1, startY, startY + clip.Height - 1);
-
-            for (int x = 0; x < clip.Width; x++)
+            try
             {
-                for (int y = 0; y < clip.Height; y++)
+                // 定期检查取消请求
+                if (cts.Token.IsCancellationRequested)
+                    return;
+
+                // 先销毁目标区域的互动家具实体
+                KillAll(startX, startX + clip.Width - 1, startY, startY + clip.Height - 1);
+
+                int total = clip.Width * clip.Height;
+                int processed = 0;
+                int lastReport = 0;
+
+                for (int x = 0; x < clip.Width; x++)
                 {
-                    int worldX = startX + x;
-                    int worldY = startY + y;
+                    for (int y = 0; y < clip.Height; y++)
+                    {
+                        // 每100个图格检查一次取消
+                        if ((x * clip.Height + y) % 100 == 0 && cts.Token.IsCancellationRequested)
+                            return;
 
-                    // 边界检查
-                    if (worldX < 0 || worldX >= Main.maxTilesX ||
-                        worldY < 0 || worldY >= Main.maxTilesY) continue;
+                        int worldX = startX + x;
+                        int worldY = startY + y;
 
-                    // 完全复制图格数据
-                    Main.tile[worldX, worldY] = (Tile)clip.Tiles![x, y].Clone();
+                        // 边界检查
+                        if (worldX < 0 || worldX >= Main.maxTilesX ||
+                            worldY < 0 || worldY >= Main.maxTilesY) continue;
+
+                        // 完全复制图格数据
+                        Main.tile[worldX, worldY] = (Tile)clip.Tiles![x, y].Clone();
+
+                        processed++;
+
+                        // 进度反馈（每10%）
+                        int progress = (processed * 100) / total;
+                        if (progress >= lastReport + 10)
+                        {
+                            lastReport = progress;
+                            // 发送进度
+                            plr.SendInfoMessage($"粘贴进度: {progress}%");
+                        }
+                    }
                 }
             }
-
-        }).ContinueWith(_ =>
-        {
-            // 修复家具实体
-            FixAll(startX, startX + clip.Width - 1, startY, startY + clip.Height - 1);
-
-            // 修复家具内存在的物品
-            if (plr.HasPermission(Config.IsAdamin) || Config.FixItem)
+            catch (OperationCanceledException)
             {
-                // 修复箱子内物品
-                RestoreChestItems(clip.ChestItems!, new Point(baseX, baseY));
-                // 修复物品框物品
-                RestoreItemFrames(clip.ItemFrames, new Point(baseX, baseY));
-                //修复盘子、武器架、人偶、衣帽架的物品
-                RestorefoodPlatter(clip.FoodPlatters, new Point(baseX, baseY));
-                RestoreWeaponsRack(clip.WeaponsRacks, new Point(baseX, baseY));
-                RestoreDisplayDoll(clip.DisplayDolls, new Point(baseX, baseY));
-                RestoreHatRack(clip.HatRacks, new Point(baseX, baseY));
+                // 任务被取消，回滚建筑
+                RollbackBuilding(plr, BeforeState);
+                throw;
             }
+        }, cts.Token);
 
-            // 修复标牌信息
-            RestoreSignText(clip, baseX, baseY);
-            // 修复逻辑感应器
-            RestoreLogicSensor(clip.LogicSensors, new Point(baseX, baseY));
+        // 设置实际任务
+        TaskManager.SetPlayerTask(plr, task);
 
-            TileHelper.GenAfter();
-            int value = GetUnixTimestamp - secondLast;
-            plr.SendSuccessMessage($"已粘贴区域 ({clip.Width} x {clip.Height})，用时{value}秒。");
+        task.ContinueWith(t =>
+        {
+            try
+            {
+                if (t.IsCanceled)
+                {
+                    plr.SendInfoMessage("粘贴任务已取消");
+                }
+                else if (t.IsFaulted)
+                {
+                    plr.SendErrorMessage($"粘贴失败: {t.Exception?.InnerException?.Message}");
+                    // 出错时回滚
+                    RollbackBuilding(plr, BeforeState);
+                }
+                else
+                {
+                    // 修复家具实体
+                    FixAll(startX, startX + clip.Width - 1, startY, startY + clip.Height - 1);
+
+                    // 修复家具内存在的物品
+                    if (plr.HasPermission(Config.IsAdamin) || Config.FixItem)
+                    {
+                        // 修复箱子内物品
+                        RestoreChestItems(clip.ChestItems!, new Point(baseX, baseY));
+                        // 修复物品框物品
+                        RestoreItemFrames(clip.ItemFrames, new Point(baseX, baseY));
+                        //修复盘子、武器架、人偶、衣帽架的物品
+                        RestorefoodPlatter(clip.FoodPlatters, new Point(baseX, baseY));
+                        RestoreWeaponsRack(clip.WeaponsRacks, new Point(baseX, baseY));
+                        RestoreDisplayDoll(clip.DisplayDolls, new Point(baseX, baseY));
+                        RestoreHatRack(clip.HatRacks, new Point(baseX, baseY));
+                    }
+
+                    // 修复标牌信息
+                    RestoreSignText(clip, baseX, baseY);
+                    // 修复逻辑感应器
+                    RestoreLogicSensor(clip.LogicSensors, new Point(baseX, baseY));
+
+                    TileHelper.GenAfter();
+                    int value = GetUnixTimestamp - secondLast;
+                    plr.SendSuccessMessage($"已粘贴区域 ({clip.Width} x {clip.Height})，用时{value}秒。");
+                }
+            }
+            finally
+            {
+                TaskManager.FinishPlayerTask(plr);
+            }
         });
     }
     #endregion
 
-    #region 还原建筑方法
-    public static Task AsyncBack(TSPlayer plr, int startX, int startY, int endX, int endY, BuildOperation operation)
+    #region 还原建筑方法（修改为使用TaskManager）
+    public static void Back(TSPlayer plr, int startX, int startY, int endX, int endY, BuildOperation operation)
     {
-        TileHelper.StartGen();
+        if (!TaskManager.StartPlayerTask(plr, out var cts))
+        {
+            plr.SendErrorMessage("您已有一个任务在运行，请等待完成");
+            return;
+        }
+
         int secondLast = GetUnixTimestamp;
 
-        return Task.Run(delegate
+        var task = Task.Run(() =>
         {
-            // 检查操作记录
-            if (operation == null)
+            try
             {
-                plr.SendErrorMessage("没有可撤销的操作记录");
-                return;
-            }
+                // 检查取消
+                if (cts.Token.IsCancellationRequested)
+                    return;
 
-            // 移除保护区域
-            if (Config.AutoCreateRegion && !string.IsNullOrEmpty(operation.CreatedRegion))
+                // 检查操作记录
+                if (operation == null)
+                {
+                    plr.SendErrorMessage("没有可撤销的操作记录");
+                    return;
+                }
+
+                // 移除保护区域
+                if (Config.AutoCreateRegion && !string.IsNullOrEmpty(operation.CreatedRegion))
+                {
+                    RegionManager.DeleteRegion(plr, operation.CreatedRegion);
+                    Map.DeleteTargetRecord(operation.CreatedRegion);
+                }
+
+                // 还原建筑
+                RollbackBuilding(plr, operation.BeforeState);
+            }
+            catch (OperationCanceledException)
             {
-                RegionManager.DeleteRegion(plr, operation.CreatedRegion);
-                Map.DeleteTargetRecord(operation.CreatedRegion);
+                throw;
             }
+        }, cts.Token);
 
-            // 还原建筑
-            RollbackBuilding(plr, operation.BeforeState);
+        TaskManager.SetPlayerTask(plr, task);
 
-        }).ContinueWith(delegate
+        task.ContinueWith(t =>
         {
-            TileHelper.GenAfter();
-            int value = GetUnixTimestamp - secondLast;
-            plr.SendMessage($"[复制建筑] 建筑清理完成，用时{value}秒。", 240, 250, 150);
+            try
+            {
+                if (t.IsCanceled)
+                {
+                    plr.SendInfoMessage("还原任务已取消");
+                }
+                else if (t.IsFaulted)
+                {
+                    plr.SendErrorMessage($"还原失败: {t.Exception?.InnerException?.Message}");
+                }
+                else
+                {
+                    TileHelper.GenAfter();
+                    int value = GetUnixTimestamp - secondLast;
+                    plr.SendMessage($"[复制建筑] 建筑清理完成，用时{value}秒。", 240, 250, 150);
+                }
+            }
+            finally
+            {
+                TaskManager.FinishPlayerTask(plr);
+            }
         });
     }
     #endregion

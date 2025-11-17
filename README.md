@@ -17,13 +17,17 @@
 | /cb sp [索引/建筑名]  | create.copy |      生成建筑      |
 | /cb bk   | create.copy |      还原建筑覆盖图格      |
 | /cb list   | create.copy |      列出已有建筑     |
+| /cb qx   | create.copy |      取消当前自己放置任务     |
+| /cb kiil   | create.admin |      取消所有人当前放置任务     |
 | /cb r   | create.copy |      列出插件区域保护     |
 | /cb rd   | create.copy |      显示指定建筑的访客记录     |
 | /cb del [索引/区域名]  | create.admin |      删除区域保护     |
 | /cb up [索引/区域名] [0/1] [玩家名] [+-组名]   | create.admin |      更新区域保护     |
 | /cb at   | create.admin |      基于访客功能的自动清理功能     |
-| /cb cond   | create.copy |      显示进度参考     |
+| /cb cd   | create.copy |      显示进度参考     |
+| /cb re [索引/建筑名]   | create.admin |      删除指定建筑文件     |
 | /cb zip   | create.admin |      清空建筑与所有区域保护并备份文件为zip     |
+| /reload | tshock.cfg.reload | 重新加载插件配置 |
 
 ## 配置
 > 配置文件位置：tshock/CreateSpawn.json
@@ -86,6 +90,14 @@
 
 ## 更新日志
 ```
+v1.1.6
+加入了Task任务管理器以避免同时多个玩家或单个玩家执行多次指令时导致的冲突问题
+加入了取消当前自己放置任务：/cb qx
+加入了管理指令取消所有人当前放置任务：/cb kill
+加入了管理指令删除指定建筑文件:/cb re 建筑名或索引
+加入了更多进度条件限制选择，可用/cb cd查询，支持索引
+如:/cb add 我的家 40,15（等效于:血月环境下,击败世纪之花后）
+
 v1.1.5
 加入了进度条件限制功能
 在添加新建筑时使用/cb add 建筑名 条件1,条件2,... 可设置该建筑的限制条件

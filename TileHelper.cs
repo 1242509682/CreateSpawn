@@ -6,28 +6,6 @@ namespace CreateSpawn;
 
 internal class TileHelper
 {
-    public static bool isTaskRunning { get; set; }
-
-    public static void StartGen()
-    {
-        isTaskRunning = true;
-    }
-
-    public static void FinishGen()
-    {
-        isTaskRunning = false;
-        TShock.Utils.SaveWorld();
-    }
-
-    public static bool NeedWaitTask(TSPlayer op)
-    {
-        if (isTaskRunning)
-        {
-            op?.SendErrorMessage("另一个创建任务正在执行，请稍后再操作");
-        }
-        return isTaskRunning;
-    }
-
     public static void ClearEverything(int x, int y)
     {
         Main.tile[x, y].ClearEverything();
@@ -43,6 +21,11 @@ internal class TileHelper
         return !plr.RealPlayer;
     }
 
+    public static void GenAfter()
+    {
+        InformPlayers();
+        TShock.Utils.SaveWorld();
+    }
 
     public static void InformPlayers()
     {
@@ -64,12 +47,6 @@ internal class TileHelper
                 }
             }
         }
-    }
-
-    public static void GenAfter()
-    {
-        InformPlayers();
-        FinishGen();
     }
 
     #region 更新整个世界图格方法
