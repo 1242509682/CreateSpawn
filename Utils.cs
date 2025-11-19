@@ -25,7 +25,7 @@ internal static class Utils
         int endY = startY + building.Height - 1;
 
         // 调试信息
-        plr.SendInfoMessage($"正在恢复区域: {startX},{startY} 到 {endX},{endY} (大小: {building.Width}x{building.Height})");
+        plr.SendInfoMessage($"正在恢复区域 {building.RegionName}: {startX},{startY} 到 {endX},{endY} (大小: {building.Width}x{building.Height})");
 
         // 0. 还原前先销毁当前区域的互动家具实体
         KillAll(startX, endX, startY, endY);
@@ -42,11 +42,9 @@ internal static class Utils
                     worldY < 0 || worldY >= Main.maxTilesY) continue;
 
                 Main.tile[worldX, worldY].CopyFrom(building.Tiles[x, y]);
+                TSPlayer.All.SendTileSquareCentered(worldX, worldY);
             }
         }
-
-        // 批量发送图格更新（更高效）
-        TSPlayer.All.SendTileSquareCentered(startX + building.Width / 2, startY + building.Height / 2, (byte)Math.Max(building.Width, building.Height));
 
         // 2. 修复实体
         FixAll(startX, endX, startY, endY);
@@ -578,7 +576,7 @@ internal static class Utils
         var tile = Main.tile[x, y];
         if (tile.type == TileID.LogicSensor)
         {
-            var id = TEFoodPlatter.Find(x, y);
+            var id = TELogicSensor.Find(x, y);
             if (id != -1)
             {
                 var sensor = (TELogicSensor)TileEntity.ByID[id];

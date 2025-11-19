@@ -90,7 +90,7 @@ internal class RegionManager
                 {
                     PlayerName = creatorName,
                     VisitCount = 1,
-                    LastVisitTime = DateTime.Now.Ticks
+                    LastVisitTime = DateTime.Now
                 });
             }
 
@@ -98,7 +98,7 @@ internal class RegionManager
             RegionTracker.LastVisitors[RegionName] = new LastVisitorRecord
             {
                 PlayerName = creatorName,
-                VisitTime = DateTime.Now.Ticks
+                VisitTime = DateTime.Now
             };
 
             // 立即保存记录
@@ -157,7 +157,7 @@ internal class RegionManager
     public static void UpdateRegion(TSPlayer plr, string Input, string action)
     {
         // 尝试解析输入是否为索引号
-        Region region = ParseRegionInput(plr, Input);
+        Region region = ParseRegionInput(plr, Input)!;
         if (region == null) return;
 
         // 检查权限：玩家必须是管理员或者是该区域的拥有者
@@ -241,14 +241,14 @@ internal class RegionManager
     }
     #endregion
 
-    #region 删除区域方法（支持索引）
-    public static void DeleteRegion(TSPlayer plr, string regionInput)
+    #region 删除区域方法
+    public static void DeleteRegion(TSPlayer plr, string Input, bool del = false)
     {
-        // 尝试解析输入是否为索引号
-        Region region = ParseRegionInput(plr, regionInput);
+        Region region = ParseRegionInput(plr, Input)!;
+
         if (region == null) return;
 
-        // 检查权限：玩家必须是管理员或者是该区域的拥有者
+        // 检查权限
         if (!HasRegionPermission(plr, region.Name))
         {
             plr.SendErrorMessage($"你没有权限删除区域 '{region.Name}'");
@@ -256,40 +256,66 @@ internal class RegionManager
             return;
         }
 
-        if (TShock.Regions.DeleteRegion(region.Name))
+        ClearRegion(plr, region, del);
+    }
+    #endregion
+
+    #region 根据区域拥有者的操作记录:移除游戏中的建筑与区域方法
+    public static void ClearRegion(TSPlayer plr, Region region, bool del = false)
+    {
+        if (region is null)
         {
-            plr.SendSuccessMessage($"已移除区域: {region.Name}");
+            plr.SendMessage("区域对象为空,请使用/cb del 移除", color: Tool.RandomColors());
+            return;
         }
+
+        string RegionName = region.Name;
+        string Owner = region.Owner;
+
+        // 如果是执行 /cb del 指令
+        if (del)
+        {
+            // 查找操作记录
+            var Operation = Map.FindOperation(RegionName, Owner);
+            if (Operation == null)
+            {
+                plr.SendErrorMessage($"未找到区域 {RegionName} 的操作记录，无法还原建筑");
+                return;
+            }
+
+            var area = Operation.Area;
+            SmartBack(plr, area.X, area.Y,
+                 area.X + area.Width - 1,
+                 area.Y + area.Height - 1, Operation);
+        }
+
+        // 2. 删除区域 与 访客记录
+        TShock.Regions.DeleteRegion(RegionName);
+        RegionTracker.RegionVisits.Remove(RegionName);
+        RegionTracker.LastVisitors.Remove(RegionName);
+        Map.DeleteTargetRecord(RegionName);
     }
     #endregion
 
     #region 解析区域输入（支持索引和名称）
-    public static Region ParseRegionInput(TSPlayer plr, string input)
+    public static Region? ParseRegionInput(TSPlayer plr, string input)
     {
-        // 如果是数字，按索引处理
-        if (int.TryParse(input, out int index))
+        if (string.IsNullOrEmpty(input))
         {
-            var regions = GetPluginRegions();
-
-            if (index < 1 || index > regions.Count)
-            {
-                plr.SendErrorMessage($"索引 {index} 无效，可用范围: 1-{regions.Count}");
-                return null;
-            }
-
-            var region = regions[index - 1];
-            return region;
-        }
-
-        // 否则按区域名称处理
-        var regionByName = TShock.Regions.GetRegionByName(input);
-        if (regionByName == null)
-        {
-            plr.SendErrorMessage($"未找到区域: {input}");
+            plr.SendErrorMessage("区域名称或索引不能为空");
             return null;
         }
 
-        return regionByName;
+        // 数字索引处理
+        if (int.TryParse(input, out int index))
+        {
+            var regions = GetPluginRegions().ToList();
+            return regions.ElementAtOrDefault(index - 1) ?? null;
+        }
+
+        Region region = TShock.Regions.GetRegionByName(input);
+
+        return region;
     }
     #endregion
 
@@ -319,13 +345,13 @@ internal class RegionManager
     #endregion
 
     #region 根据位置点获取当前由插件创建的区域
-    public static string? GetCurrRegion(int tileX, int tileY)
+    public static Region? GetRegionForPos(int tileX, int tileY)
     {
         var regions = TShock.Regions.InAreaRegion(tileX, tileY);
         if (regions == null || regions.Count() == 0) return null;
 
         // 使用LINQ查找插件区域
-        return regions.FirstOrDefault(r => IsPluginRegion(r.Name))?.Name ?? null;
+        return regions.FirstOrDefault(r => IsPluginRegion(r.Name));
     }
     #endregion
 
@@ -346,60 +372,64 @@ internal class RegionManager
     }
     #endregion
 
-    #region 检查区域是否已被保护（避免覆盖粘贴）
-    public static bool IsAreaProtected(int startX, int startY, int width, int height, ref string Name)
+    #region 检查区域是否已被保护
+    public static bool IsAreaProtected(int startX, int startY, int width, int height, ref string regionName)
     {
         try
         {
-            int endX = startX + width - 1;
-            int endY = startY + height - 1;
+            // 使用 TShock 的区域重叠检查
+            var region = TShock.Regions.Regions.FirstOrDefault(r =>
+                IsPluginRegion(r.Name) &&
+                r.Area.Intersects(new Rectangle(startX, startY, width, height)));
 
-            // 检查四个角和中点是否在保护区域内
-            var checkPoints = new[]
-            {
-                new Point(startX, startY),           // 左上角
-                new Point(endX, startY),             // 右上角
-                new Point(startX, endY),             // 左下角
-                new Point(endX, endY),               // 右下角
-                new Point(startX + width / 2, startY + height / 2) // 中心点
-            };
-
-            Name = checkPoints
-            .SelectMany(point => TShock.Regions.InAreaRegion(point.X, point.Y) ?? Array.Empty<Region>())
-            .FirstOrDefault(region => IsPluginRegion(region.Name))?.Name!;
-
-            return Name != null;
+            regionName = region?.Name!;
+            return region != null;
         }
         catch (Exception ex)
         {
             TShock.Log.ConsoleError($"[复制建筑] 检查区域保护状态时出错: {ex}");
-            return false; // 出错时默认允许粘贴
+            return false;
         }
     }
     #endregion
 
-    #region 判断玩家是否在区域
+    #region 判断玩家是否在插件区域
     public static bool InRegion(TSPlayer plr, string RegionName)
     {
         return plr != null &&
                plr.Active &&
                plr.CurrentRegion != null &&
+               plr.CurrentRegion == GetRegionForPos(plr.TileX, plr.TileY) &&
                plr.CurrentRegion.Name == RegionName;
     }
     #endregion
 
     #region 权限检查方法
-    public static bool HasRegionPermission(TSPlayer plr, string RegionName)
+    public static bool HasRegionPermission(TSPlayer plr, string RegionName, bool IsAllowed = false)
     {
-        return plr.HasPermission(Config.IsAdamin) ||
-               plr.Name == GetRegionOwner(RegionName);
+        // 管理员权限
+        if (plr.HasPermission(Config.IsAdamin))
+            return true;
+
+        // 区域所有者
+        if (plr.Name == GetRegionOwner(RegionName))
+            return true;
+
+        // 是否给 不是区域所有者 不是管理 且允许在这个区域建筑的其他玩家权限
+        if (IsAllowed)
+        {
+            var region = TShock.Regions.GetRegionByName(RegionName);
+            return region?.HasPermissionToBuildInRegion(plr) == true;
+        }
+
+        return false;
     }
     #endregion
 
     #region 根据区域名称获取区域所有者
-    public static string GetRegionOwner(string regionName)
+    public static string GetRegionOwner(string RegionName)
     {
-        var region = TShock.Regions.GetRegionByName(regionName);
+        var region = TShock.Regions.GetRegionByName(RegionName);
         return region?.Owner ?? "未知";
     }
     #endregion
@@ -407,10 +437,10 @@ internal class RegionManager
     #region 检查是否为管理员区域
     public static bool IsAdminRegion(string owner)
     {
-        var account = TShock.UserAccounts.GetUserAccountByName(owner);
-        if (account == null) return false;
+        var acc = TShock.UserAccounts.GetUserAccountByName(owner);
+        if (acc == null) return false;
 
-        var group = TShock.Groups.GetGroupByName(account.Group);
+        var group = TShock.Groups.GetGroupByName(acc.Group);
         return group != null && group.HasPermission(Config.IsAdamin);
     }
     #endregion
@@ -421,9 +451,9 @@ internal class RegionManager
         // 管理员可以复制任何区域
         if (plr.HasPermission(Config.IsAdamin)) return true;
 
-        // 检查中心点所在的保护区域
-        var region = TShock.Regions.InAreaRegion((startX + endX) / 2, (startY + endY) / 2)
-                    ?.FirstOrDefault(r => IsPluginRegion(r.Name));
+        var pos = new Vector2((startX + endX) / 2, (startY + endY) / 2);
+
+        Region? region = GetRegionForPos((int)pos.X, (int)pos.Y);
 
         // 没有保护区域，可以复制
         if (region == null) return true;
@@ -441,6 +471,49 @@ internal class RegionManager
         }
 
         return true;
+    }
+    #endregion
+
+    #region 获取区域创建时间（避免无访客的建筑没记录）
+    public static long GetRegionCreationTime(string RegionName)
+    {
+        // 从区域名称中提取时间戳
+        string[] Parts = RegionName.Split('_');
+
+        if (Parts.Length >= 2)
+        {
+            string Taker = Parts[^1]; // 取最后一部分
+
+            // 如果是 ticks 格式
+            if (Parts.Length >= 3 && long.TryParse(Parts[^1], out long ticks))
+            {
+                return ticks;
+            }
+
+            // 尝试解析标准时间戳格式 yyyyMMddHHmmss
+            if (DateTime.TryParseExact(Taker, "yyyyMMddHHmmss",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out DateTime CreateTime))
+            {
+                return CreateTime.Ticks;
+            }
+        }
+
+        // 如果无法从名称解析，从文件获取创建时间
+        var region = TShock.Regions.GetRegionByName(RegionName);
+        if (region != null)
+        {
+            string owner = region.Owner;
+            string file = Path.Combine(Map.Paths, $"{owner}_bk.map");
+
+            if (File.Exists(file))
+            {
+                var creationTime = System.IO.File.GetCreationTime(file);
+                return creationTime.Ticks;
+            }
+        }
+
+        return DateTime.Now.Ticks;
     }
     #endregion
 }

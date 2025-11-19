@@ -73,6 +73,39 @@ public class Map
         return new Stack<BuildOperation>(operations);
     }
 
+    #region 查找指定区域对应归属者的操作记录
+    public static BuildOperation FindOperation(string regionName, string ownerName)
+    {
+        try
+        {
+            var operations = LoadOperations(ownerName);
+            if (operations.Count == 0)
+            {
+                TShock.Log.ConsoleError($"[复制建筑] 玩家 {ownerName} 没有操作记录");
+                return null;
+            }
+
+            // 直接在栈中查找，不进行弹出操作
+            var op = operations.FirstOrDefault(op => op.CreatedRegion == regionName);
+
+            if (op != null)
+            {
+                return op;
+            }
+            else
+            {
+                TShock.Log.ConsoleError($"[复制建筑] 在玩家 {ownerName} 的操作记录中未找到区域 {regionName}");
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 查找区域 {regionName} 的操作记录时出错: {ex}");
+            return null;
+        }
+    }
+    #endregion
+
     public static BuildOperation PopOperation(string name)
     {
         var stack = LoadOperations(name);
@@ -720,7 +753,7 @@ public class Map
     }
     #endregion
 
-    #region 访问记录文件管理方法
+    #region 访客记录文件管理方法
     internal static readonly string VisitDataPath = Path.Combine(Paths, "区域访问记录"); // 访问记录存储目录
 
     // 保存所有访问记录
@@ -758,12 +791,12 @@ public class Map
                     {
                         writer.Write(visit.PlayerName ?? "");
                         writer.Write(visit.VisitCount);
-                        writer.Write(visit.LastVisitTime);
+                        writer.Write(visit.LastVisitTime.Ticks);
                     }
 
                     // 写入最后访客记录
                     writer.Write(lastVisitor.PlayerName ?? "");
-                    writer.Write(lastVisitor.VisitTime);
+                    writer.Write(lastVisitor.VisitTime.Ticks);
                 }
                 savedCount++;
             }
@@ -812,7 +845,7 @@ public class Map
                             {
                                 PlayerName = reader.ReadString(),
                                 VisitCount = reader.ReadInt32(),
-                                LastVisitTime = reader.ReadInt64()
+                                LastVisitTime = new DateTime(reader.ReadInt64())
                             });
                         }
 
@@ -820,7 +853,7 @@ public class Map
                         var lastVisitor = new LastVisitorRecord
                         {
                             PlayerName = reader.ReadString(),
-                            VisitTime = reader.ReadInt64()
+                            VisitTime = new DateTime(reader.ReadInt64())
                         };
 
                         // 添加到内存

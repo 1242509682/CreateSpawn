@@ -39,19 +39,22 @@ internal class Configuration
     public int AdjustX { get; set; } = 0;
     [JsonProperty("微调Y", Order = 4)]
     public int AdjustY { get; set; } = 0;
-
-    [JsonProperty("复制建筑自动建区域", Order = 5)]
+    
+    [JsonProperty("复制建筑自动建区域", Order = 6)]
     public bool AutoCreateRegion { get; set; } = true;
-    [JsonProperty("区域默认允许组", Order = 6)]
+    [JsonProperty("区域默认允许组", Order = 7)]
     public List<string> AllowGroup { get; set; }
-    [JsonProperty("区域默认允许玩家名", Order = 7)]
+    [JsonProperty("区域默认允许玩家名", Order = 8)]
     public List<string> AllowUser { get; set; }
-    [JsonProperty("区域边界显示", Order = 8)]
+    [JsonProperty("区域边界显示", Order = 9)]
     public ProjData ShowArea { get; set; } = new ProjData();
-    [JsonProperty("访客功能", Order = 9)]
+    [JsonProperty("访客功能", Order = 10)]
     public VisitRecordData VisitRecord { get; set; } = new VisitRecordData();
     [JsonProperty("自动清理(基于访客功能)", Order = 11)]
     public AutoClearData AutoClear { get; set; } = new AutoClearData();
+
+    [JsonProperty("任务管理配置", Order = 12)]
+    public TaskConfigData TaskConfig { get; set; } = new TaskConfigData();
 
     #region 预设参数方法
     public void SetDefault()
@@ -73,6 +76,8 @@ internal class Configuration
             MaxPerCheck = 10,
             ExemptPlayers = new List<string>() { "羽学" },
         };
+        
+        this.TaskConfig = new TaskConfigData();
     }
     #endregion
 

@@ -3,7 +3,6 @@ using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
 using static CreateSpawn.CreateSpawn;
-using static CreateSpawn.RegionManager;
 
 namespace CreateSpawn;
 
@@ -11,7 +10,7 @@ namespace CreateSpawn;
 public class PlayerTracker
 {
     public int Index { get; set; }
-    public int Timer { get; set; } = 0; // 计时器
+    public DateTime LastCheckTime { get; set; } = DateTime.Now;
     public Point LastPosition { get; set; } // 上次坐标
     public PlayerTracker(int index, Point position)
     {
@@ -25,14 +24,14 @@ public class RegionVisitRecord
 {
     public string PlayerName { get; set; } = string.Empty;
     public int VisitCount { get; set; } = 0;
-    public long LastVisitTime { get; set; } = 0;
+    public DateTime LastVisitTime { get; set; } = DateTime.MinValue; // 改为 DateTime
 }
 
 // 上一个访客记录
 public class LastVisitorRecord
 {
     public string PlayerName { get; set; } = string.Empty;
-    public long VisitTime { get; set; } = 0;
+    public DateTime VisitTime { get; set; } = DateTime.MinValue; // 改为 DateTime
 }
 
 // 配置数据
@@ -45,8 +44,8 @@ public class VisitRecordData
     [JsonProperty("保存间隔秒数")]
     public int SaveIntervalSeconds { get; set; } = 600;
 
-    [JsonProperty("检测位置帧数")]
-    public int CheckInterval { get; set; } = 60; // 默认60帧≈1秒
+    [JsonProperty("检测位置秒数")]
+    public int CheckInterval { get; set; } = 1;
     [JsonProperty("进入消息")]
     public string EnterMessage { get; set; } = "\n你进入了建筑区域: [c/478ED2:{0}] 归属: [c/47D1BE:{1}]";
     [JsonProperty("离开消息")]
@@ -72,8 +71,6 @@ public class VisitRecordData
     public bool ShowLastVisitor { get; set; } = true;
     [JsonProperty("最后访客文本")]
     public string LastVisitorText { get; set; } = "最后访客: [c/FFFFFF:{0}] 于[c/47D3C2:{1}]访问";
-
-
 }
 
 public class RegionTracker
@@ -94,73 +91,64 @@ public class RegionTracker
     // 检查玩家区域变化（基于位置变化）
     private Dictionary<int, PlayerTracker> Players = new();
 
-    #region 区域变化检查方法
-    public void CheckTrackerConditions()
+    #region 区域变化检查方法（单个玩家版本）
+    public void CheckTrackerConditions(TSPlayer plr)
     {
-        if (Config is null) return;
+        if (Config is null || plr is null || !plr.Active ||
+           !plr.ConnectionAlive || !plr.IsLoggedIn)
+            return;
+            
         var data = Config.VisitRecord;
         if (data is null || !data.Enabled) return;
-      
-        CheckSaveVisitRecords();   // 检查是否需要保存访问记录
-
-        // 优化：使用数组避免字典枚举开销
-        var Players = new int[this.Players.Count];
-        this.Players.Keys.CopyTo(Players, 0);
-
-        foreach (int playerIndex in Players)
+        
+        // 检查是否需要保存访问记录
+        CheckSaveVisitRecords();
+    
+        // 获取或创建玩家追踪器
+        if (!Players.TryGetValue(plr.Index, out var tracker))
         {
-            if (!this.Players.TryGetValue(playerIndex, out var tracker))
-                continue;
-
-            var plr = TShock.Players[playerIndex];
-
-            // 快速玩家状态检查
-            if (plr is null || !plr.Active || !plr.ConnectionAlive || !plr.IsLoggedIn)
-            {
-                this.Players.Remove(playerIndex);
-                continue;
-            }
-
-            Point Pos = new Point(plr.TileX, plr.TileY);
-
-            // 检查位置是否变化
-            if (tracker.LastPosition == Pos) continue;
-
-            // 计时器检查
-            tracker.Timer++;
-            if (tracker.Timer < data.CheckInterval) continue;
-            tracker.Timer = 0;
-
-            // 保存旧位置并更新新位置
-            Point lastPos = tracker.LastPosition;
-            tracker.LastPosition = Pos;
-
-            // 获取区域信息
-            string? NewRegion = GetCurrRegion(Pos.X, Pos.Y);
-            string? OldRegion = GetCurrRegion(lastPos.X, lastPos.Y);
-
-            // 检测所有区域变化情况
-            if (OldRegion != NewRegion)
-            {
-                HandleRegionChange(plr, OldRegion!, NewRegion!, data);
-            }
+            tracker = new PlayerTracker(plr.Index, new Point(plr.TileX, plr.TileY));
+            Players[plr.Index] = tracker;
+        }
+    
+        Point Pos = new Point(plr.TileX, plr.TileY);
+    
+        // 检查位置是否变化
+        if (tracker.LastPosition == Pos) return;
+    
+        // 检查时间间隔（使用 DateTime 替代计数器）
+        TimeSpan LastCheck = DateTime.Now - tracker.LastCheckTime;
+        if (LastCheck.TotalSeconds < data.CheckInterval) // 默认1秒检查一次
+            return;
+    
+        // 更新时间
+        tracker.LastCheckTime = DateTime.Now;
+        Point lastPos = tracker.LastPosition;
+        tracker.LastPosition = Pos;
+    
+        // 获取区域信息
+        string? newRegion = RegionManager.GetRegionForPos(Pos.X, Pos.Y)?.Name;
+        string? oldRegion = RegionManager.GetRegionForPos(lastPos.X, lastPos.Y)?.Name;
+    
+        // 检测区域变化
+        if (oldRegion != newRegion)
+        {
+            HandleRegionChange(plr, oldRegion!, newRegion!, data);
         }
     }
     #endregion
-
-    #region 定期保存访问记录
-    private long SaveTime = DateTime.Now.Ticks;
+    
+    #region 定期保存访问记录（使用 DateTime）
+    private DateTime LastSaveTime = DateTime.Now;
     public void CheckSaveVisitRecords()
     {
         if (!Config.VisitRecord.SaveVisitData) return;
-
-        long now = DateTime.Now.Ticks;
-        long interval = Config.VisitRecord.SaveIntervalSeconds * TimeSpan.TicksPerSecond;
-
-        if (now - SaveTime >= interval)
+    
+        TimeSpan LastSave = DateTime.Now - LastSaveTime;
+        if (LastSave.TotalSeconds >= Config.VisitRecord.SaveIntervalSeconds)
         {
             Map.SaveAllRecords();
-            SaveTime = now;
+            LastSaveTime = DateTime.Now;
         }
     }
     #endregion
@@ -184,7 +172,8 @@ public class RegionTracker
             UpdateVisitStats(NewRegion, plr.Name);
 
             // 显示访问统计（根据权限检查）
-            if ((HasRegionPermission(plr, NewRegion) || !data.ShowStatsOnlyToOwnerAndAdmin) &&
+            if ((RegionManager.HasRegionPermission(plr, NewRegion) ||
+                !data.ShowStatsOnlyToOwnerAndAdmin) &&
                 (data.ShowVisitStats || data.ShowTopVisitor || data.ShowLastVisitor))
             {
                 ShowVisitStatistics(plr, NewRegion, data, lastVisitor);
@@ -199,7 +188,7 @@ public class RegionTracker
             LastVisitors[NewRegion] = new LastVisitorRecord
             {
                 PlayerName = plr.Name,
-                VisitTime = DateTime.Now.Ticks
+                VisitTime = DateTime.Now
             };
         }
         else if (!string.IsNullOrEmpty(OldRegion) && string.IsNullOrEmpty(NewRegion))
@@ -222,7 +211,8 @@ public class RegionTracker
             UpdateVisitStats(NewRegion, plr.Name);
 
             // 显示访问统计（根据权限检查）
-            if ((HasRegionPermission(plr, NewRegion) || !data.ShowStatsOnlyToOwnerAndAdmin) &&
+            if ((RegionManager.HasRegionPermission(plr, NewRegion) ||
+                !data.ShowStatsOnlyToOwnerAndAdmin) &&
                 (data.ShowVisitStats || data.ShowTopVisitor || data.ShowLastVisitor))
             {
                 ShowVisitStatistics(plr, NewRegion, data, lastVisitor);
@@ -236,7 +226,7 @@ public class RegionTracker
             LastVisitors[NewRegion] = new LastVisitorRecord
             {
                 PlayerName = plr.Name,
-                VisitTime = System.DateTime.Now.Ticks
+                VisitTime = System.DateTime.Now
             };
         }
     }
@@ -265,7 +255,7 @@ public class RegionTracker
             {
                 PlayerName = PlayerName,
                 VisitCount = 1,
-                LastVisitTime = System.DateTime.Now.Ticks
+                LastVisitTime = System.DateTime.Now
             });
         }
 
@@ -356,14 +346,19 @@ public class RegionTracker
         ShowVisitStatistics(plr, regionName, data, lastVisitor);
     }
     #endregion
-
-    #region 格式化时间显示
-    private string FormatTime(long ticks)
+    
+    #region 格式化时间显示（重载方法）
+    public string FormatTime(long ticks)
     {
-        var time = new System.DateTime(ticks);
-        var now = System.DateTime.Now;
+        var time = new DateTime(ticks);
+        return FormatTime(time);
+    }
+    
+    public string FormatTime(DateTime time)
+    {
+        var now = DateTime.Now;
         var diff = now - time;
-
+    
         if (diff.TotalSeconds < 60)
             return $"{(int)diff.TotalSeconds}秒前";
         else if (diff.TotalMinutes < 60)
@@ -411,8 +406,8 @@ public class RegionTracker
     #region 获取区域信息
     private RegionInfo GetRegionInfo(string RegionName)
     {
-        string displayName = GetDisplayName(RegionName);
-        string owner = GetRegionOwner(RegionName);
+        string displayName = RegionManager.GetDisplayName(RegionName);
+        string owner = RegionManager.GetRegionOwner(RegionName);
         return new RegionInfo { Name = displayName, Owner = owner };
     }
     #endregion
