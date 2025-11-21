@@ -16,7 +16,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 1, 7);
+    public override Version Version => new(1, 1, 8);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护、访客统计、自动清理建筑、区域边界显示、进度限制粘贴";
     #endregion
 
@@ -272,9 +272,11 @@ public class CreateSpawn : TerrariaPlugin
                     // 使用 CopyFrom 而不是 Clone，性能更好
                     Main.tile[worldX, worldY].CopyFrom(source);
                 }
-                TSPlayer.All.SendTileSquareCentered(worldX, worldY);
             }
         }
+
+        // 批量发送图格更新（更高效）
+        TSPlayer.All.SendTileSquareCentered(startX + clip.Width / 2, startY + clip.Height / 2, (byte)Math.Max(clip.Width, clip.Height));
 
         // 完成后的操作
         AsyncSpawnEnd(plr, startX, startY, clip, StartTime);
@@ -333,16 +335,15 @@ public class CreateSpawn : TerrariaPlugin
             if (worldX < 0 || worldX >= Main.maxTilesX || worldY < 0 || worldY >= Main.maxTilesY)
                 continue;
 
-            // 直接复制图格数据，避免不必要的克隆
             var source = clip.Tiles?[x, y];
             if (source != null)
             {
-                // 使用 CopyFrom 而不是 Clone，性能更好
                 Main.tile[worldX, worldY].CopyFrom(source);
             }
-
-            TSPlayer.All.SendTileSquareCentered(worldX, worldY);
         }
+
+        // 批量发送图格更新（更高效）
+        TSPlayer.All.SendTileSquareCentered(startX + clip.Width / 2, startY + clip.Height / 2, (byte)Math.Max(clip.Width, clip.Height));
     }
     #endregion
 
@@ -481,9 +482,10 @@ public class CreateSpawn : TerrariaPlugin
             {
                 Main.tile[worldX, worldY].CopyFrom(building.Tiles[x, y]);
             }
-
-            TSPlayer.All.SendTileSquareCentered(worldX, worldY);
         }
+
+        // 批量发送图格更新（更高效）
+        TSPlayer.All.SendTileSquareCentered(startX + building.Width / 2, startY + building.Height / 2, (byte)Math.Max(building.Width, building.Height));
 
     }
     #endregion

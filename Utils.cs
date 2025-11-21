@@ -42,9 +42,11 @@ internal static class Utils
                     worldY < 0 || worldY >= Main.maxTilesY) continue;
 
                 Main.tile[worldX, worldY].CopyFrom(building.Tiles[x, y]);
-                TSPlayer.All.SendTileSquareCentered(worldX, worldY);
             }
         }
+
+        // 批量发送图格更新（更高效）
+        TSPlayer.All.SendTileSquareCentered(startX + building.Width / 2, startY + building.Height / 2, (byte)Math.Max(building.Width, building.Height));
 
         // 2. 修复实体
         FixAll(startX, endX, startY, endY);
