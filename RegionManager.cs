@@ -114,12 +114,27 @@ internal class RegionManager
     }
     #endregion
 
-    #region 清理区域名称中的非法字符
+    #region 清理区域名称中的非法字符(非法字符替换为减号)
     private static string ClearRegionName(string name)
     {
-        // 只允许字母、数字、下划线
-        // 替换空格和特殊字符为下划线
-        return Regex.Replace(name, @"[^\w]", "_");
+        if (string.IsNullOrEmpty(name))
+            return "unnamed";
+
+        // 允许的字符：中文、字母、数字、减号
+        // 替换其他特殊字符为减号
+        string cleaned = Regex.Replace(name, @"[^\u4e00-\u9fa5a-zA-Z0-9\-]", "-");
+
+        // 移除连续的减号
+        cleaned = Regex.Replace(cleaned, @"-+", "-");
+
+        // 移除开头和结尾的减号
+        cleaned = cleaned.Trim('-');
+
+        // 如果清理后为空，使用默认名称
+        if (string.IsNullOrEmpty(cleaned))
+            return "unnamed";
+
+        return cleaned;
     }
     #endregion
 
@@ -242,7 +257,7 @@ internal class RegionManager
     #endregion
 
     #region 删除区域方法
-    public static void DeleteRegion(TSPlayer plr, string Input, bool del = false)
+    public static void RemoveRegion(TSPlayer plr, string Input, bool del = false)
     {
         Region region = ParseRegionInput(plr, Input)!;
 
@@ -256,23 +271,23 @@ internal class RegionManager
             return;
         }
 
-        ClearRegion(plr, region, del);
+        RemoveRegion(plr, region, del);
     }
     #endregion
 
     #region 根据区域拥有者的操作记录:移除游戏中的建筑与区域方法
-    public static void ClearRegion(TSPlayer plr, Region region, bool del = false)
+    public static void RemoveRegion(TSPlayer plr, Region region, bool del = false)
     {
         if (region is null)
         {
-            plr.SendMessage("区域对象为空,请使用/cb del 移除", color: Tool.RandomColors());
+            plr.SendMessage("区域对象为空,请使用/cb rm 移除", color: Tool.RandomColors());
             return;
         }
 
         string RegionName = region.Name;
         string Owner = region.Owner;
 
-        // 如果是执行 /cb del 指令
+        // 如果是执行 /cb rm 指令
         if (del)
         {
             // 查找操作记录
@@ -355,12 +370,22 @@ internal class RegionManager
     }
     #endregion
 
-    #region 判断是否为插件区域
-    public static bool IsPluginRegion(string RegionName)
+    #region 判断是否为插件区域 改进版
+    public static bool IsPluginRegion(string regionName)
     {
-        return RegionName.Contains("_") &&
-               RegionName.Length > 1 &&
-               char.IsDigit(RegionName[^1]);
+        if (string.IsNullOrEmpty(regionName) || !regionName.Contains("_"))
+            return false;
+
+        // 找到最后一个下划线
+        int lastIndex = regionName.LastIndexOf('_');
+        if (lastIndex < 0 || lastIndex >= regionName.Length - 1)
+            return false;
+
+        // 获取下划线后的部分
+        string suffix = regionName.Substring(lastIndex + 1);
+
+        // 只要是以数字结尾就认为是插件区域
+        return suffix.Length > 0 && suffix.All(char.IsDigit);
     }
     #endregion
 

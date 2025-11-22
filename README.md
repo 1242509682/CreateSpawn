@@ -21,11 +21,11 @@
 | /cb kiil   | create.admin |      取消所有人当前放置任务     |
 | /cb r   | create.copy |      显示插件区域保护     |
 | /cb rd   | create.copy |      显示指定建筑的访客记录     |
-| /cb del [索引/区域名]  | create.admin |      删除区域保护     |
+| /cb rm [索引/区域名]  | create.admin |      删除区域保护     |
 | /cb up [索引/区域名] [0/1] [玩家名] [+-组名]   | create.admin |      更新区域保护     |
 | /cb at   | create.admin |      基于访客功能的自动清理功能     |
 | /cb cd   | create.copy |      显示进度参考     |
-| /cb re [索引/建筑名]   | create.admin |      删除指定建筑文件     |
+| /cb del [索引/建筑名]   | create.admin |      删除指定建筑文件     |
 | /cb zip   | create.admin |      清空建筑与所有区域保护并备份文件为zip     |
 | /reload | tshock.cfg.reload | 重新加载插件配置 |
 
@@ -96,6 +96,14 @@
 
 ## 更新日志
 ```
+v1.1.9
+加入了粘贴建筑时的偏移功能
+使用/cb sp 建筑名 [偏移模式]
+偏移模式:不输默认为头顶，可选值0到8:
+0:中心,1:头顶,2:脚下,3:左,4:右,5:左下,6:右下,7:左上,8:右上
+加入了内嵌建筑文件:404岛主普通版与天顶版刷怪场,进度为骷髅王后
+精简版v1.0.1.2同上调整
+
 v1.1.8
 修复发包效率低导致拖慢建筑生成与还原速度的Bug
 

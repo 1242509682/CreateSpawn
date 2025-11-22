@@ -16,7 +16,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 1, 8);
+    public override Version Version => new(1, 1, 9);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护、访客统计、自动清理建筑、区域边界显示、进度限制粘贴";
     #endregion
 
@@ -107,33 +107,51 @@ public class CreateSpawn : TerrariaPlugin
     }
     #endregion
 
-    #region 内嵌出生点
+    #region 内嵌资源管理
     private void ExtractData()
     {
-        // 检查文件夹是否存在（不是检查文件！）
         if (Directory.Exists(Map.Paths)) return;
 
-        // 创建文件夹并释放内嵌资源
         Directory.CreateDirectory(Map.Paths);
 
-        var assembly = Assembly.GetExecutingAssembly();
-        var resource = $"{assembly.GetName().Name}.内嵌资源.出生点_cp.map";
-
-        using (var stream = assembly.GetManifestResourceStream(resource))
+        var asm = Assembly.GetExecutingAssembly();
+        var files = new List<string>
         {
-            if (stream == null)
-            {
-                TShock.Log.ConsoleError("[复制建筑] 内嵌资源未找到！");
-                return;
-            }
+            "出生点_cp.map",
+            "岛主刷怪场_cp.map",
+            "岛主天顶刷怪场_cp.map",
+        };
 
-            using (var fileStream = File.Create(Path.Combine(Map.Paths, "出生点_cp.map")))
+        int count = 0;
+        foreach (var file in files)
+        {
+            var res = $"{asm.GetName().Name}.内嵌资源.{file}";
+
+            using (var stream = asm.GetManifestResourceStream(res))
             {
-                stream.CopyTo(fileStream);
+                if (stream == null)
+                {
+                    TShock.Log.ConsoleError($"[复制建筑] 资源未找到: {res}");
+                    continue;
+                }
+
+                try
+                {
+                    using (var fs = File.Create(Path.Combine(Map.Paths, file)))
+                    {
+                        stream.CopyTo(fs);
+                    }
+                    count++;
+                    TShock.Log.ConsoleInfo($"[复制建筑] 释放: {file}");
+                }
+                catch (Exception ex)
+                {
+                    TShock.Log.ConsoleError($"[复制建筑] 释放失败 {file}: {ex.Message}");
+                }
             }
         }
 
-        TShock.Log.ConsoleInfo("[复制建筑] 已初始化默认出生点数据");
+        TShock.Log.ConsoleInfo($"[复制建筑] 初始化完成: {count}个文件");
     }
     #endregion
 
@@ -437,7 +455,7 @@ public class CreateSpawn : TerrariaPlugin
         if (!string.IsNullOrEmpty(op.CreatedRegion))
         {
             var region = RegionManager.ParseRegionInput(plr, op.CreatedRegion)!;
-            RegionManager.ClearRegion(plr, region);
+            RegionManager.RemoveRegion(plr, region);
         }
 
         // 还原建筑
@@ -499,7 +517,7 @@ public class CreateSpawn : TerrariaPlugin
             var region = RegionManager.ParseRegionInput(plr, op.CreatedRegion);
             if (region != null)
             {
-                RegionManager.ClearRegion(plr, region);
+                RegionManager.RemoveRegion(plr, region);
             }
         }
 

@@ -195,20 +195,21 @@ internal class Commands
                     }
                     break;
 
-                case "del":
-                case "delete":
-                case "删除":
+                case "rm":
+                case "re":
+                case "remove":
+                case "移除":
                     {
                         if (args.Parameters.Count < 2)
                         {
-                            plr.SendErrorMessage("用法: /cb del <索引/区域名称>");
+                            plr.SendErrorMessage("用法: /cb rm <索引/区域名称>");
                             plr.SendErrorMessage("使用 /cb r 查看区域列表和索引号");
                             return;
                         }
 
                         string Input = args.Parameters[1];
                         // 删除区域并同时还原建筑
-                        RegionManager.DeleteRegion(plr, Input, true);
+                        RegionManager.RemoveRegion(plr, Input, true);
                     }
                     break;
 
@@ -249,10 +250,11 @@ internal class Commands
                     }
                     break;
 
-                case "re":  // 新增的删除命令
-                case "remove":
-                case "移除":
-                    ReCommand(args);
+                case "d":
+                case "de":
+                case "delete":
+                case "删除":
+                    DeleteBuilding(args);
                     break;
 
                 case "qx":
@@ -393,6 +395,8 @@ internal class Commands
         mess.Append("撤销指令: /cb bk\n");
         mess.Append("查建筑表: /cb ls\n");
         mess.Append("查区域表: /cb r\n");
+        if (plr.HasPermission(Config.IsAdamin))
+            mess.Append($"删除指令: /cb del {name}\n");
         Tool.GradMess(plr, mess);
     }
     #endregion
@@ -402,6 +406,7 @@ internal class Commands
     {
         string name = plr.Name; // 默认使用玩家自己的名字
         string RegionName = name; // 用于区域创建的建筑名称
+        int offset = 1; // 默认头顶模式 (1)
 
         // 检查参数是否存在
         if (args.Parameters.Count > 1)
@@ -411,6 +416,33 @@ internal class Commands
             {
                 name = param;
                 RegionName = param;
+            }
+        }
+
+        // 检查是否有偏移模式参数
+        if (args.Parameters.Count > 2)
+        {
+            if (int.TryParse(args.Parameters[2], out int mode))
+            {
+                if (mode >= 0 && mode <= 8) // 修改为0-8
+                {
+                    offset = mode;
+                }
+                else
+                {
+                    plr.SendErrorMessage("偏移模式必须是 0-8 之间的数字！");
+                    plr.SendInfoMessage("0=中心, 1=头顶, 2=脚下, 3=左侧, 4=右侧");
+                    plr.SendInfoMessage("5=左下, 6=右下, 7=左上, 8=右上");
+                    return;
+                }
+            }
+            else
+            {
+                plr.SendErrorMessage("偏移模式参数无效！");
+                plr.SendInfoMessage("用法: /cb sp <建筑名> <偏移模式>");
+                plr.SendInfoMessage("偏移模式: 0=中心, 1=头顶, 2=脚下, 3=左侧, 4=右侧");
+                plr.SendInfoMessage("5=左下, 6=右下, 7=左上, 8=右上");
+                return;
             }
         }
 
@@ -442,10 +474,15 @@ internal class Commands
         if (clip == null)
         {
             plr.SendErrorMessage($"未找到建筑: {name}");
+            plr.SendInfoMessage("使用 /cb list 查看所有可用建筑");
+            plr.SendInfoMessage("用法: /cb sp <建筑名/索引> <偏移模式>");
+            plr.SendInfoMessage("偏移模式: 中心0, 头顶1, 脚下2, 左侧3, 右侧4");
+            plr.SendInfoMessage("左下5, 右下6, 左上7, 右上8");
+            plr.SendInfoMessage("偏移模式不输默认为头顶");
             return;
         }
 
-        // 新增：检查进度条件（管理员无视条件）
+        // 检查进度条件（管理员无视条件）
         if (!plr.HasPermission(Config.IsAdamin) && clip.Conditions != null && clip.Conditions.Count > 0)
         {
             // 检查条件组中的所有条件是否都满足
@@ -457,6 +494,7 @@ internal class Commands
             }
         }
 
+        // 粘贴起始坐标
         int startX = 0;
         int startY = 0;
 
@@ -467,8 +505,10 @@ internal class Commands
 
         if (plr.RealPlayer) // 如果是真实玩家则当前位置为头顶
         {
-            startX = plr.TileX - clip.Width / 2;
-            startY = plr.TileY - clip.Height;
+            // 根据偏移模式计算起始坐标
+            (startX, startY) = CalculateOffset(plr, clip, offset);
+
+            plr.SendInfoMessage($"使用偏移模式: {GetOffsetModeName(offset)}");
 
             // 检查玩家头顶区域是否已经有保护区域
             if (RegionManager.IsAreaProtected(startX, startY, clip.Width, clip.Height, ref RegionName2))
@@ -479,13 +519,13 @@ internal class Commands
                     Owner = RegionManager.GetRegionOwner(RegionName2);
                 }
 
-                plr.SendErrorMessage($"出生点已有保护区域 {RegionName2} 无法在此处粘贴建筑！");
+                plr.SendErrorMessage($"目标区域已有保护区域 {RegionName2} 无法在此处粘贴建筑！");
                 plr.SendInfoMessage("请移动到没有保护区域的空地再进行粘贴。");
 
                 // 如果是管理员或区域所有者 则提示删除指令
                 if (plr.HasPermission(Config.IsAdamin) || plr.Name == Owner)
                 {
-                    plr.SendInfoMessage($"或使用/cb del {Index} 移除！");
+                    plr.SendInfoMessage($"或使用/cb rm {Index} 移除！");
                 }
                 return;
             }
@@ -505,12 +545,70 @@ internal class Commands
                 }
 
                 TSPlayer.Server.SendErrorMessage($"出生点已有保护区域 {RegionName} 无法在此处粘贴建筑！");
-                TSPlayer.Server.SendInfoMessage($"可使用/cb del {Index} 移除！");
+                TSPlayer.Server.SendInfoMessage($"可使用/cb rm {Index} 移除！");
                 return;
             }
         }
 
         SmartSpawn(plr, startX, startY, clip, RegionName);
+    }
+
+    // 计算偏移坐标
+    private static (int x, int y) CalculateOffset(TSPlayer plr, Building clip, int Mode)
+    {
+        int x = plr.TileX;
+        int y = plr.TileY;
+
+        switch (Mode)
+        {
+            case 0: // 中心
+                return (x - clip.Width / 2, y - clip.Height / 2);
+
+            case 1: // 头顶 (默认)
+                return (x - clip.Width / 2, y - clip.Height);
+
+            case 2: // 脚下
+                return (x - clip.Width / 2, y);
+
+            case 3: // 左侧
+                return (x - clip.Width, y - clip.Height / 2);
+
+            case 4: // 右侧
+                return (x, y - clip.Height / 2);
+
+            case 5: // 左下
+                return (x - clip.Width, y);
+
+            case 6: // 右下
+                return (x, y);
+
+            case 7: // 左上
+                return (x - clip.Width, y - clip.Height);
+
+            case 8: // 右上
+                return (x, y - clip.Height);
+
+            default: // 默认头顶
+                return (x - clip.Width / 2, y - clip.Height);
+        }
+    }
+
+    // 获取偏移模式名称
+    private static string GetOffsetModeName(int mode)
+    {
+        return mode switch
+        {
+            0 => "中心",
+            1 => "头顶",
+            2 => "脚下",
+            3 => "左侧",
+            4 => "右侧",
+            5 => "左下",
+            6 => "右下",
+            7 => "左上",
+            8 => "右上",
+            _ => "未知"
+        };
     }
     #endregion
 
@@ -559,7 +657,7 @@ internal class Commands
         if (RegionManager.HasRegionPermission(plr, RegionName))
             plr.SendMessage(Tool.TextGradient("————————————————————————"), Tool.RandomColors());
         plr.SendInfoMessage($"可以使用索引号代替完整区域名，\n" +
-                            $"例如: /cb del 1 或 /cb up 1 0");
+                            $"例如: /cb rm 1 或 /cb up 1 0");
 
         if (Config.ShowArea is not null && Config.ShowArea.Enabled)
         {
@@ -716,7 +814,7 @@ internal class Commands
     #endregion
 
     #region 删除建筑文件指令方法
-    private static void ReCommand(CommandArgs args)
+    private static void DeleteBuilding(CommandArgs args)
     {
         var plr = args.Player;
 
@@ -729,9 +827,9 @@ internal class Commands
 
         if (args.Parameters.Count < 2)
         {
-            plr.SendErrorMessage("语法错误！正确用法: /cb re <建筑名称|索引>");
-            plr.SendErrorMessage("示例: /cb re 我的房子 - 删除名为'我的房子'的建筑文件");
-            plr.SendErrorMessage("示例: /cb re 1 - 删除索引为1的建筑文件");
+            plr.SendErrorMessage("语法错误！正确用法: /cb del <建筑名称|索引>");
+            plr.SendErrorMessage("示例: /cb del 我的房子 - 删除名为'我的房子'的建筑文件");
+            plr.SendErrorMessage("示例: /cb del 1 - 删除索引为1的建筑文件");
             plr.SendInfoMessage("使用 /cb list 查看所有建筑列表和索引");
             return;
         }
@@ -899,10 +997,10 @@ internal class Commands
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                             $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
-                            $"/cb del <索引/区域名> ——移除区域与建筑\n" +
+                            $"/cb rm <索引/区域名> ——移除区域与建筑\n" +
                             $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新区域\n" +
                             $"/cb at  ——自动清理建筑与区域功能\n" +
-                            $"/cb re ——删除指定建筑文件\n" +
+                            $"/cb del ——删除指定建筑文件\n" +
                             $"/cb zip ——清空建筑与保护区域并备份为zip\n" +
                             $"/cb cd  ——显示进度参考(cd)\n");
             }
@@ -917,7 +1015,7 @@ internal class Commands
                             $"/cb list ——列出建筑(ls)\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                             $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
-                            $"/cb del <索引/区域名> ——移除自己的区域与建筑\n" +
+                            $"/cb rm <索引/区域名> ——移除自己的区域与建筑\n" +
                             $"/cb up <索引/区域名> <0或1> <玩家名> <+-组名> ——更新自己的区域\n" +
                             $"/cb cd  ——显示进度参考(cd)\n");
 
@@ -939,11 +1037,11 @@ internal class Commands
                         $"/cb list ——列出建筑(ls)\n" +
                         $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                         $"/cb rd [索引/区域名] ——查看该区域访客记录\n" +
-                        $"/cb del [索引/区域名] ——移除区域\n" +
+                        $"/cb rm [索引/区域名] ——移除区域\n" +
                         $"/cb up [索引/区域名] [0或1] [玩家名] [+-组名] ——更新区域\n" +
                         $"/cb at  ——自动清理建筑与区域功能\n" +
                         $"/cb cd  ——显示进度参考(cd)\n" +
-                        $"/cb re ——删除指定建筑文件\n" +
+                        $"/cb del ——删除指定建筑文件\n" +
                         $"/cb zip ——清空建筑与保护区域并备份为zip", 240, 250, 150);
         }
     }

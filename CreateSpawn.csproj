@@ -10,9 +10,13 @@
     </ItemGroup>
     <ItemGroup>
       <None Remove="内嵌资源\出生点_cp.map" />
+      <None Remove="内嵌资源\岛主刷怪场_cp.map" />
+      <None Remove="内嵌资源\岛主天顶刷怪场_cp.map" />
     </ItemGroup>
     <ItemGroup>
       <EmbeddedResource Include="内嵌资源\出生点_cp.map" />
+      <EmbeddedResource Include="内嵌资源\岛主刷怪场_cp.map" />
+      <EmbeddedResource Include="内嵌资源\岛主天顶刷怪场_cp.map" />
     </ItemGroup>
     <ItemGroup>
 		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p" />
