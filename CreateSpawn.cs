@@ -1,5 +1,4 @@
 ﻿using System.Reflection;
-using BCrypt.Net;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.GameContent.Generation;
@@ -16,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 1, 9);
+    public override Version Version => new(1, 2, 0);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护、访客统计、自动清理建筑、区域边界显示、进度限制粘贴";
     #endregion
 
@@ -28,13 +27,15 @@ public class CreateSpawn : TerrariaPlugin
         ExtractData(); //内嵌资源
         GeneralHooks.ReloadEvent += ReloadConfig;
         ServerApi.Hooks.GamePostInitialize.Register(this, this.GamePost);
+        ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
+        ServerApi.Hooks.ServerLeave.Register(this, OnServerLeave);
         On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod += WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
         TShockAPI.Commands.ChatCommands.Add(new Command("create.copy", Commands.CreateSpawnCMD, "cb", "复制建筑"));
-        ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
-        ServerApi.Hooks.NetGreetPlayer.Register(this, this.OnGreetPlayer);
-        ServerApi.Hooks.ServerLeave.Register(this, OnServerLeave);
-        // 注册玩家更新事件
-        GetDataHandlers.PlayerUpdate.Register(this.OnPlayerUpdate);
+        // 注册 RegionHooks 事件
+        RegionHooks.RegionEntered += OnRegionEntered;
+        RegionHooks.RegionLeft += OnRegionLeft;
+        RegionHooks.RegionDeleted += OnRegionDeleted;
+        GetDataHandlers.PlayerBuffUpdate.Register(this.PlayerBuffUpdate!);
     }
 
     protected override void Dispose(bool disposing)
@@ -44,12 +45,15 @@ public class CreateSpawn : TerrariaPlugin
             TaskManager.ClearAllTasks();
             GeneralHooks.ReloadEvent -= ReloadConfig;
             ServerApi.Hooks.GamePostInitialize.Deregister(this, this.GamePost);
+            ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
+            ServerApi.Hooks.ServerLeave.Deregister(this, OnServerLeave);
             On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod -= WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
             TShockAPI.Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == Commands.CreateSpawnCMD);
-            ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
-            ServerApi.Hooks.NetGreetPlayer.Deregister(this, this.OnGreetPlayer);
-            ServerApi.Hooks.ServerLeave.Deregister(this, OnServerLeave);
-            GetDataHandlers.PlayerUpdate.UnRegister(this.OnPlayerUpdate);
+            // 注销 RegionHooks 事件
+            RegionHooks.RegionEntered -= OnRegionEntered;
+            RegionHooks.RegionLeft -= OnRegionLeft;
+            RegionHooks.RegionDeleted -= OnRegionDeleted;
+            GetDataHandlers.PlayerBuffUpdate.UnRegister(this.PlayerBuffUpdate!);
         }
         base.Dispose(disposing);
     }
@@ -96,7 +100,10 @@ public class CreateSpawn : TerrariaPlugin
         }
 
         AutoClear = new AutoClear(); // 初始化自动清理
-        Map.LoadAllRecords(); // 加载访问记录
+
+        if (Config.VisitRecord.Enabled &&
+            Config.VisitRecord.SaveVisitData)
+            Map.LoadAllRecords(); // 加载访问记录
     }
 
     private void WorldGen_AddGenerationPass_string_WorldGenLegacyMethod(On.Terraria.WorldGen.orig_AddGenerationPass_string_WorldGenLegacyMethod orig, string name, WorldGenLegacyMethod method)
@@ -158,11 +165,10 @@ public class CreateSpawn : TerrariaPlugin
     #region 游戏更新触发事件
     public static int GetUnixTimestamp => (int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
     internal static AutoClear AutoClear { get; private set; } // 自动清理管理器
-    internal static RegionTracker RegionTracker = new(); // 区域访问记录追踪器
     private void OnGameUpdate(EventArgs args)
     {
-        // 区域边界检查
-        MyProjectile.RegionProjectile();
+        // 更新边界显示（不再需要检查玩家位置）
+        MyProjectile.UpdateAll();
 
         // 自动清理检查
         AutoClear.CheckAutoClear();
@@ -172,38 +178,50 @@ public class CreateSpawn : TerrariaPlugin
     }
     #endregion
 
-    #region 玩家进出服事件
-    private void OnGreetPlayer(GreetPlayerEventArgs args)
-    {
-        var plr = TShock.Players[args.Who];
-        RegionTracker.OnPlayerJoin(plr);
-
-        if (Config.VisitRecord.SaveVisitData)
-            Map.SaveAllRecords(); // 保存访客记录
-    }
-
+    #region 玩家出服事件
     private void OnServerLeave(LeaveEventArgs args)
     {
         MyProjectile.Stop(args.Who);
         RegionTracker.OnPlayerLeave(args.Who); // 清理区域追踪器
-
-        if (Config.VisitRecord.SaveVisitData)
-            Map.SaveAllRecords(); // 保存访客记录
-
         TaskManager.CancelTask(TShock.Players[args.Who]); // 取消玩家的所有任务
     }
     #endregion
 
-    #region 玩家更新事件处理
-    private void OnPlayerUpdate(object? sender, GetDataHandlers.PlayerUpdateEventArgs e)
+    #region 区域检测事件
+    internal static RegionTracker RegionTracker = new(); // 区域访问记录
+    private void OnRegionEntered(RegionHooks.RegionEnteredEventArgs args)
     {
-        var plr = e.Player;
-        // 直接传递玩家对象进行访客记录检查
-        RegionTracker.CheckTrackerConditions(plr);
+        if (RegionManager.IsPluginRegion(args.Region.Name))
+        {
+            RegionTracker.RegionEntry(args.Player, args.Region.Name);
+            MyProjectile.RegionEntry(args.Player, args.Region); // 自动启动边界显示
+        }
+    }
+
+    private void OnRegionLeft(RegionHooks.RegionLeftEventArgs args)
+    {
+        if (RegionManager.IsPluginRegion(args.Region.Name))
+        {
+            RegionTracker.RegionExit(args.Player, args.Region.Name);
+            MyProjectile.RegionExit(args.Player, args.Region.Name); // 自动关闭边界显示
+        }
+    }
+
+    private void OnRegionDeleted(RegionHooks.RegionDeletedEventArgs args)
+    {
+        if (RegionManager.IsPluginRegion(args.Region.Name))
+        {
+            RegionTracker.RegionDeleted(args.Region.Name);
+        }
+    }
+
+    private void PlayerBuffUpdate(object o, GetDataHandlers.PlayerBuffUpdateEventArgs args)
+    {
+        args.Handled = true;
+        var plr = args.Player;
+        RegionTracker.RefreshBuffs(plr); // 刷新区域BUFF
     }
     #endregion
-
-    #region 生成建筑方法（智能选择模式）
 
     #region 智能选择生成建筑执行模式
     public static void SmartSpawn(TSPlayer plr, int startX, int startY, Building clip, string buildName)
@@ -397,10 +415,6 @@ public class CreateSpawn : TerrariaPlugin
     }
     #endregion
 
-    #endregion
-
-    #region 还原建筑方法（智能选择模式）
-
     #region 智能选择还原建筑执行模式
     public static void SmartBack(TSPlayer plr, int startX, int startY, int endX, int endY, BuildOperation op)
     {
@@ -455,7 +469,8 @@ public class CreateSpawn : TerrariaPlugin
         if (!string.IsNullOrEmpty(op.CreatedRegion))
         {
             var region = RegionManager.ParseRegionInput(plr, op.CreatedRegion)!;
-            RegionManager.RemoveRegion(plr, region);
+            if (region != null)
+                TShock.Regions.DeleteRegion(region.Name);
         }
 
         // 还原建筑
@@ -516,9 +531,7 @@ public class CreateSpawn : TerrariaPlugin
         {
             var region = RegionManager.ParseRegionInput(plr, op.CreatedRegion);
             if (region != null)
-            {
-                RegionManager.RemoveRegion(plr, region);
-            }
+                TShock.Regions.DeleteRegion(region.Name);
         }
 
         // 还原建筑
@@ -528,7 +541,5 @@ public class CreateSpawn : TerrariaPlugin
         int duration = GetUnixTimestamp - StartTime;
         plr.SendSuccessMessage($"【分帧】{op.CreatedRegion} 建筑还原完成，用时{duration}秒。");
     }
-    #endregion
-
     #endregion
 }

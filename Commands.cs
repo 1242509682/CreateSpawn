@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using Microsoft.Xna.Framework;
 using TShockAPI;
+using Terraria;
 using static CreateSpawn.CreateSpawn;
 using static CreateSpawn.Utils;
 using static CreateSpawn.Condition;
@@ -162,9 +163,14 @@ internal class Commands
                 case "region":
                 case "区域":
                 case "领地":
-                    {
-                        ShowRegionCMD(plr);
-                    }
+                    ShowRegionCMD(plr);
+                    break;
+
+                case "bf":
+                case "buff":
+                case "状态":
+                case "增益":
+                    BuffCMD(args, plr);
                     break;
 
                 case "rd":
@@ -191,7 +197,7 @@ internal class Commands
                         }
 
                         // 直接调用 RegionTracker 的方法
-                        CreateSpawn.RegionTracker.ShowRegionVisitRecords(plr, Region.Name);
+                        CreateSpawn.RegionTracker.ShowRecords(plr, Region.Name);
                     }
                     break;
 
@@ -209,7 +215,7 @@ internal class Commands
 
                         string Input = args.Parameters[1];
                         // 删除区域并同时还原建筑
-                        RegionManager.RemoveRegion(plr, Input, true);
+                        RegionManager.RemoveRegion(plr, Input);
                     }
                     break;
 
@@ -433,6 +439,7 @@ internal class Commands
                     plr.SendErrorMessage("偏移模式必须是 0-8 之间的数字！");
                     plr.SendInfoMessage("0=中心, 1=头顶, 2=脚下, 3=左侧, 4=右侧");
                     plr.SendInfoMessage("5=左下, 6=右下, 7=左上, 8=右上");
+                    plr.SendInfoMessage("偏移模式不输默认为头顶,且脚下必须有能站立方块");
                     return;
                 }
             }
@@ -442,6 +449,7 @@ internal class Commands
                 plr.SendInfoMessage("用法: /cb sp <建筑名> <偏移模式>");
                 plr.SendInfoMessage("偏移模式: 0=中心, 1=头顶, 2=脚下, 3=左侧, 4=右侧");
                 plr.SendInfoMessage("5=左下, 6=右下, 7=左上, 8=右上");
+                plr.SendInfoMessage("偏移模式不输默认为头顶,且脚下必须有能站立方块");
                 return;
             }
         }
@@ -478,7 +486,7 @@ internal class Commands
             plr.SendInfoMessage("用法: /cb sp <建筑名/索引> <偏移模式>");
             plr.SendInfoMessage("偏移模式: 中心0, 头顶1, 脚下2, 左侧3, 右侧4");
             plr.SendInfoMessage("左下5, 右下6, 左上7, 右上8");
-            plr.SendInfoMessage("偏移模式不输默认为头顶");
+            plr.SendInfoMessage("偏移模式不输默认为头顶,且脚下必须有能站立方块");
             return;
         }
 
@@ -510,7 +518,7 @@ internal class Commands
 
             plr.SendInfoMessage($"使用偏移模式: {GetOffsetModeName(offset)}");
 
-            // 检查玩家头顶区域是否已经有保护区域
+            // 检查玩家生成区域是否已经有保护区域
             if (RegionManager.IsAreaProtected(startX, startY, clip.Width, clip.Height, ref RegionName2))
             {
                 if (!string.IsNullOrEmpty(RegionName2))
@@ -630,6 +638,7 @@ internal class Commands
         for (int i = 0; i < Regions.Count; i++)
         {
             var region = Regions[i];
+            string buildingName = RegionManager.GetBuildingName(region.Name);
 
             // 确定区域名称的显示颜色
             string ListName;
@@ -648,46 +657,195 @@ internal class Commands
                 Name = $"[c/66AEF2:{region.Owner}]";
             }
 
-            plr.SendMessage($"{i + 1}. {ListName.ToString()}\n" +
-                $"所有者: {Name}, 范围: [c/E74F5E:{region.Area.X}]," +
-                $"[c/F07F52:{region.Area.Y}] 到 [c/F0A852:{region.Area.X + region.Area.Width}]," +
-                $"[c/F0C852:{region.Area.Y + region.Area.Height}]", 240, 250, 150);
+            // 构建区域信息字符串
+            StringBuilder regionInfo = new StringBuilder();
+            regionInfo.Append($"{i + 1}. {ListName.ToString()}\n");
+            regionInfo.Append($"所有者: {Name}, 范围: [c/E74F5E:{region.Area.X}],");
+            regionInfo.Append($"[c/F07F52:{region.Area.Y}] 到 [c/F0A852:{region.Area.X + region.Area.Width}],");
+            regionInfo.Append($"[c/F0C852:{region.Area.Y + region.Area.Height}]");
+
+            // 显示BUFF信息
+            if (Config.RegionBuff.ZoneBuffs.TryGetValue(buildingName, out var buffs) && buffs.Length > 0)
+            {
+                regionInfo.Append($"\n[c/FFA500:BUF]");
+
+                // 显示前5个BUFF
+                for (int j = 0; j < Math.Min(5, buffs.Length); j++)
+                {
+                    string buffName = Terraria.Lang.GetBuffName(buffs[j]);
+                    regionInfo.Append($" [c/47D3C2:{buffName}]");
+                }
+
+                // 如果BUFF多于3个，显示数量
+                if (buffs.Length > 5)
+                {
+                    regionInfo.Append($" [+{buffs.Length - 5}更多]");
+                }
+            }
+
+            plr.SendMessage(regionInfo.ToString(), 240, 250, 150);
         }
 
         if (RegionManager.HasRegionPermission(plr, RegionName))
             plr.SendMessage(Tool.TextGradient("————————————————————————"), Tool.RandomColors());
-        plr.SendInfoMessage($"可以使用索引号代替完整区域名，\n" +
-                            $"例如: /cb rm 1 或 /cb up 1 0");
+    }
+    #endregion
 
-        if (Config.ShowArea is not null && Config.ShowArea.Enabled)
+    #region 区域BUFF指令
+    private static void BuffCMD(CommandArgs args, TSPlayer plr)
+    {
+        // 检查权限
+        if (!plr.HasPermission(Config.IsAdamin))
         {
-            foreach (var Region in Regions)
-            {
-                if (RegionManager.InRegion(plr, Region.Name))
-                {
-                    // 切换跑马灯效果
-                    if (MyProjectile.ProjectilesInfo.ContainsKey(plr.Index))
-                    {
-                        MyProjectile.Stop(plr.Index);
-                        plr.SendInfoMessage("已停止区域边界效果。");
-                    }
-                    else
-                    {
-                        MyProjectile.ProjectilesInfo.Add(plr.Index, new ProjectileManager
-                        {
-                            RegionName = Region.Name,
-                            Area = Region.Area,
-                            StopTimer = 0,
-                            Position = 0,
-                            UpdateCount = 0,
-                            Projectiles = new List<int>()
-                        });
+            plr.SendErrorMessage("你没有权限管理区域BUFF");
+            return;
+        }
 
-                        plr.SendInfoMessage("已启动区域边界效果。");
-                    }
-                    break;
+        // 检查玩家是否在插件区域内
+        var region = RegionManager.GetRegionForPos(plr.TileX, plr.TileY);
+        if (region == null || !RegionManager.IsPluginRegion(region.Name))
+        {
+            plr.SendErrorMessage("你必须在插件区域内使用此指令");
+            return;
+        }
+
+        // 获取建筑名称（去时间戳）
+        string buildingName = RegionManager.GetBuildingName(region.Name);
+
+        // 如果没有参数，显示当前BUFF
+        if (args.Parameters.Count == 1)
+        {
+            ShowRegionBuffs(plr, buildingName);
+            return;
+        }
+
+        if (plr == TSPlayer.Server)
+        {
+            plr.SendErrorMessage("请进入游戏后使用角色前往区域使用 /cb bf 指令");
+            return;
+        }
+
+        // 处理BUFF操作
+        string buffInput = args.Parameters[1];
+        ConfigToBuffs(plr, buildingName, buffInput);
+    }
+    #endregion
+
+    #region 修改配置Buff方法
+    private static void ConfigToBuffs(TSPlayer plr, string buildingName, string buffInput)
+    {
+        try
+        {
+            // 解析BUFF ID
+            var newBuffs = buffInput.Split(',')
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Select(s =>
+                {
+                    if (int.TryParse(s, out int id) && id >= 0)
+                        return id;
+                    else
+                        throw new FormatException($"无效的BUFF ID: {s}");
+                })
+                .ToArray();
+
+            if (newBuffs.Length == 0)
+            {
+                plr.SendErrorMessage("没有提供有效的BUFF ID");
+                return;
+            }
+
+            // 获取当前BUFF列表
+            List<int> buffs = new List<int>();
+            if (Config.RegionBuff.ZoneBuffs.ContainsKey(buildingName))
+            {
+                buffs = Config.RegionBuff.ZoneBuffs[buildingName].ToList();
+            }
+
+            // 切换BUFF状态（存在就移除，不存在就添加）
+            List<int> up = new List<int>(buffs);
+            List<int> add = new List<int>();
+            List<int> del = new List<int>();
+
+            foreach (int buffId in newBuffs)
+            {
+                if (up.Contains(buffId))
+                {
+                    up.Remove(buffId);
+                    del.Add(buffId);
+                }
+                else
+                {
+                    up.Add(buffId);
+                    add.Add(buffId);
                 }
             }
+
+            // 更新配置
+            if (up.Count == 0)
+            {
+                Config.RegionBuff.ZoneBuffs.Remove(buildingName);
+            }
+            else
+            {
+                Config.RegionBuff.ZoneBuffs[buildingName] = up.ToArray();
+            }
+
+            // 保存配置
+            Config.Write();
+
+            // 显示结果
+            plr.SendSuccessMessage($"已更新建筑类型为 '{buildingName}' 的所有区域BUFF");
+
+            if (add.Count > 0)
+            {
+                string addedStr = string.Join(", ", add.Select(id =>
+                    $"{Lang.GetBuffName(id)}([c/00FF00:{id}])"));
+                plr.SendInfoMessage($"添加: {addedStr}");
+            }
+
+            if (del.Count > 0)
+            {
+                string removedStr = string.Join(", ", del.Select(id =>
+                    $"{Lang.GetBuffName(id)}([c/FF0000:{id}])"));
+                plr.SendInfoMessage($"移除: {removedStr}");
+            }
+
+            plr.SendInfoMessage($"当前BUFF总数: {up.Count}个");
+        }
+        catch (Exception ex)
+        {
+            plr.SendErrorMessage($"操作失败: {ex.Message}");
+        }
+    } 
+    #endregion
+
+    #region 显示Buff方法
+    private static void ShowRegionBuffs(TSPlayer plr, string buildingName)
+    {
+        var region = RegionManager.GetRegionForPos(plr.TileX, plr.TileY);
+        if (region == null) return;
+
+        string owner = RegionManager.GetRegionOwner(region.Name);
+        plr.SendMessage($"[c/F17F52:建筑BUFF管理]", 240, 250, 150);
+        plr.SendMessage($"区域:[c/478ED2:{buildingName}] 所有者:[c/47D1BE:{owner}]", 240, 250, 150);
+
+        // 获取当前BUFF
+        if (Config.RegionBuff.ZoneBuffs.TryGetValue(buildingName, out var buffs))
+        {
+            plr.SendMessage("当前BUFF:", 240, 250, 150);
+            for (int i = 0; i < buffs.Length; i++)
+            {
+                string buffName = Lang.GetBuffName(buffs[i]);
+                plr.SendMessage($"{i + 1}.{buffName}([c/FFA500:{buffs[i]}])", 240, 250, 150);
+            }
+            plr.SendMessage($"示例:/cb bf 1,2,3,4", 240, 250, 150);
+            plr.SendMessage($"为同类型建筑修改区域buff", 240, 250, 150);
+            plr.SendMessage($"身处于区域内使用,存在就移除,不在就添加", 240, 250, 150);
+        }
+        else
+        {
+            plr.SendInfoMessage("当前未设置区域BUFF");
         }
     }
     #endregion
@@ -995,6 +1153,7 @@ internal class Commands
                             $"/cb qx ——放弃自己当前操作\n" +
                             $"/cb kill ——杀死所有当前任务\n" +
                             $"/cb list ——列出建筑(ls)\n" +
+                            $"/cb bf ——修改所在类型建筑的区域Buff\n" +
                             $"/cb r ——列出区域(在区域里切换高亮边界显示)\n" +
                             $"/cb rd <索引/区域名> ——查看该区域访客记录\n" +
                             $"/cb rm <索引/区域名> ——移除区域与建筑\n" +
@@ -1046,5 +1205,4 @@ internal class Commands
         }
     }
     #endregion
-
 }

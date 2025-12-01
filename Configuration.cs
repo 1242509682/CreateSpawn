@@ -6,7 +6,8 @@ namespace CreateSpawn;
 internal class Configuration
 {
     public static readonly string FilePath = Path.Combine(TShock.SavePath, "CreateSpawn.json");
-    [JsonProperty("进度条件说明", Order = -10)]
+
+    [JsonProperty("进度条件说明", Order = 15)]
     public string[] ProgType { get; set; } = new string[]
     {
         "0 无 | 1 克眼 | 2 史王 | 3 世吞 | 4克脑 | 5世吞或克脑 | 6 巨鹿 | 7 蜂王 | 8 骷髅王前 | 9 骷髅王后",
@@ -26,8 +27,6 @@ internal class Configuration
     public bool FixItem { get; set; } = false;
     [JsonProperty("忽略压缩删除的建筑", Order = -2)]
     public List<string> IgnoreList { get; set; }
-    [JsonProperty("压缩时清理访客记录", Order = -1)]
-    public bool ClearAllVisit { get; set; } = true;
 
     [JsonProperty("出生点生成", Order = 0)]
     public bool SpawnEnabled { get; set; } = true;
@@ -47,13 +46,14 @@ internal class Configuration
     [JsonProperty("区域默认允许玩家名", Order = 8)]
     public List<string> AllowUser { get; set; }
     [JsonProperty("区域边界显示", Order = 9)]
-    public ProjData ShowArea { get; set; } = new ProjData();
+    public ProjectileData ShowArea { get; set; } = new ProjectileData();
     [JsonProperty("访客功能", Order = 10)]
     public VisitRecordData VisitRecord { get; set; } = new VisitRecordData();
-    [JsonProperty("自动清理(基于访客功能)", Order = 11)]
+    [JsonProperty("领地BUFF", Order = 11)]
+    public RegionBuff RegionBuff { get; set; } = new();
+    [JsonProperty("自动清理(基于访客功能)", Order = 12)]
     public AutoClearData AutoClear { get; set; } = new AutoClearData();
-
-    [JsonProperty("任务管理配置", Order = 12)]
+    [JsonProperty("任务管理配置", Order = 13)]
     public TaskConfigData TaskConfig { get; set; } = new TaskConfigData();
 
     #region 预设参数方法
@@ -78,6 +78,16 @@ internal class Configuration
         };
         
         this.TaskConfig = new TaskConfigData();
+        this.RegionBuff = new RegionBuff()
+        {
+            Enabled = true,
+            ZoneBuffs = new Dictionary<string, int[]>()
+            {
+                { "出生点", new int[] { 1, 2, 14, 48, 87, 89, 215 } },
+                { "岛主刷怪场", new int[] { 13 } },
+                { "岛主天顶刷怪场_", new int[] { 13 } },
+            }
+        };
     }
     #endregion
 

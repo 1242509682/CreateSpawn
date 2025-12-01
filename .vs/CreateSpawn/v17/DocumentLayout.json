@@ -1,22 +1,26 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "D:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\",
+  "WorkspaceRootPath": "D:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\createspawn.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|",
-      "RelativeMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|solutionrelative:createspawn.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
+      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\commands.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|solutionrelative:commands.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\readme.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\createspawn.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|solutionrelative:createspawn.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\readme.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
       "RelativeMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|solutionrelative:readme.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\regiontracker.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\regiontracker.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|solutionrelative:regiontracker.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\createspawn.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|solutionrelative:createspawn.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|d:\\\u6E38\u620F\\terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\tshock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\configuration.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0EC057F9-C96B-4A85-ACA2-2DFDE9875E4D}|CreateSpawn.csproj|solutionrelative:configuration.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -26,58 +30,75 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 1,
+          "SelectedChildIndex": 7,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 3,
-              "Title": "CreateSpawn.cs",
-              "DocumentMoniker": "D:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\CreateSpawn.cs",
-              "RelativeDocumentMoniker": "CreateSpawn.cs",
-              "ToolTip": "D:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\CreateSpawn.cs",
-              "RelativeToolTip": "CreateSpawn.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAMwAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-19T12:30:09.033Z",
-              "IsPinned": true,
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
-              "Title": "CreateSpawn",
-              "DocumentMoniker": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\CreateSpawn.csproj",
-              "RelativeDocumentMoniker": "CreateSpawn.csproj",
-              "ToolTip": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\CreateSpawn.csproj",
-              "RelativeToolTip": "CreateSpawn.csproj",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
-              "WhenOpened": "2025-11-22T10:54:11.117Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
               "DocumentIndex": 2,
-              "Title": "RegionTracker.cs",
-              "DocumentMoniker": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\RegionTracker.cs",
-              "RelativeDocumentMoniker": "RegionTracker.cs",
-              "ToolTip": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\RegionTracker.cs",
-              "RelativeToolTip": "RegionTracker.cs",
-              "ViewState": "AgIAAEkAAAAAAAAAAAAAACYAAAABAAAAAAAAAA==",
+              "Title": "README.md",
+              "DocumentMoniker": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\README.md",
+              "RelativeDocumentMoniker": "README.md",
+              "ToolTip": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\README.md",
+              "RelativeToolTip": "README.md",
+              "ViewState": "AgIAAAMAAAAAAAAAAAAAABcAAAAyAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2025-12-01T16:53:33.427Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "Configuration.cs",
+              "DocumentMoniker": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\Configuration.cs",
+              "RelativeDocumentMoniker": "Configuration.cs",
+              "ToolTip": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\Configuration.cs",
+              "RelativeToolTip": "Configuration.cs",
+              "ViewState": "AgIAADQAAAAAAAAAAAAAADcAAAAoAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-22T10:42:56.849Z",
+              "WhenOpened": "2025-12-01T16:38:23.05Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "RegionTracker.cs",
+              "DocumentMoniker": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\RegionTracker.cs",
+              "RelativeDocumentMoniker": "RegionTracker.cs",
+              "ToolTip": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\RegionTracker.cs",
+              "RelativeToolTip": "RegionTracker.cs",
+              "ViewState": "AgIAAAIAAAAAAAAAAAAxwAoAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-01T16:00:21.769Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 1,
-              "Title": "README.md",
-              "DocumentMoniker": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\README.md",
-              "RelativeDocumentMoniker": "README.md",
-              "ToolTip": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.8 \u5B9A\u5236\u7248\\README.md",
-              "RelativeToolTip": "README.md",
-              "ViewState": "AgIAAD8AAAAAAAAAAAAAAFIAAAATAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
-              "WhenOpened": "2025-11-22T10:29:03.568Z",
+              "Title": "CreateSpawn.cs",
+              "DocumentMoniker": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\CreateSpawn.cs",
+              "RelativeDocumentMoniker": "CreateSpawn.cs",
+              "ToolTip": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\CreateSpawn.cs",
+              "RelativeToolTip": "CreateSpawn.cs",
+              "ViewState": "AgIAAAgAAAAAAAAAAAAuwKIAAAAOAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-01T15:38:54.755Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Commands.cs",
+              "DocumentMoniker": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\Commands.cs",
+              "RelativeDocumentMoniker": "Commands.cs",
+              "ToolTip": "d:\\\u6E38\u620F\\Terraria\\\u670D\u52A1\u5668\\\u63D2\u4EF6\u6E90\u7801\\TShock 5 \u6E90\u7801\\\u3010\u6E90\u7801\u3011\u590D\u5236\u5EFA\u7B51 v1.1.9 \u5B9A\u5236\u7248\\Commands.cs",
+              "RelativeToolTip": "Commands.cs",
+              "ViewState": "AgIAAG4CAAAAAAAAAAAxwEoDAAA+AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-01T12:00:53.644Z",
               "EditorCaption": ""
             }
           ]

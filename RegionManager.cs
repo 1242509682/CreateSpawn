@@ -71,45 +71,38 @@ internal class RegionManager
     #endregion
 
     #region 初始化访客记录
-    private static void SetDefaultVisitRecord(string RegionName, string creatorName)
+    private static void SetDefaultVisitRecord(string RegionName, string Owner)
     {
-        try
+        if (!RegionTracker.RegionVisits.ContainsKey(RegionName))
         {
-            if (!RegionTracker.RegionVisits.ContainsKey(RegionName))
-            {
-                RegionTracker.RegionVisits[RegionName] = new List<RegionVisitRecord>();
-            }
-
-            // 添加创建者作为第一个访客
-            var visits = RegionTracker.RegionVisits[RegionName];
-            var existingRecord = visits.FirstOrDefault(r => r.PlayerName == creatorName);
-
-            if (existingRecord == null)
-            {
-                visits.Add(new RegionVisitRecord
-                {
-                    PlayerName = creatorName,
-                    VisitCount = 1,
-                    LastVisitTime = DateTime.Now
-                });
-            }
-
-            // 设置最后访客
-            RegionTracker.LastVisitors[RegionName] = new LastVisitorRecord
-            {
-                PlayerName = creatorName,
-                VisitTime = DateTime.Now
-            };
-
-            // 立即保存记录
-            if (Config?.VisitRecord?.SaveVisitData == true)
-            {
-                Map.SaveAllRecords();
-            }
+            RegionTracker.RegionVisits[RegionName] = new List<TrackerMess>();
         }
-        catch (Exception ex)
+
+        // 添加创建者作为第一个访客
+        var visits = RegionTracker.RegionVisits[RegionName];
+        var Record = visits.FirstOrDefault(r => r.PlayerName == Owner);
+
+        if (Record == null)
         {
-            TShock.Log.ConsoleError($"[复制建筑] 初始化访客记录失败: {ex}");
+            visits.Add(new TrackerMess
+            {
+                PlayerName = Owner,
+                VisitCount = 1,
+                LastVisitTime = DateTime.Now
+            });
+        }
+
+        // 设置最后访客
+        RegionTracker.LastVisitors[RegionName] = new LastVisitorRecord
+        {
+            PlayerName = Owner,
+            VisitTime = DateTime.Now
+        };
+
+        // 立即保存记录
+        if (Config?.VisitRecord?.SaveVisitData == true)
+        {
+            Map.SaveRegionRecords(RegionName);
         }
     }
     #endregion
@@ -141,23 +134,10 @@ internal class RegionManager
     #region 清理所有由本插件创建的区域（用于zip指令）
     public static void ClearAllRegions()
     {
-        try
-        {
-            var regions = GetPluginRegions();
-            int count = regions.Count(region => TShock.Regions.DeleteRegion(region.Name));
-
-            // 清理访问记录
-            if (Config.ClearAllVisit)
-            {
-                Map.ClearAllRecords();
-            }
-
-            TShock.Utils.Broadcast($"[复制建筑] 已清理 {count} 个保护区域", 250, 240, 150);
-        }
-        catch (Exception ex)
-        {
-            TShock.Log.ConsoleError($"[复制建筑] 清理区域时出错: {ex}");
-        }
+        var regions = GetPluginRegions();
+        int count = regions.Count(region => TShock.Regions.DeleteRegion(region.Name));
+        Map.ClearAllRecords(); // 清理访问记录
+        TShock.Utils.Broadcast($"[复制建筑] 已清理 {count} 个保护区域", 250, 240, 150);
     }
     #endregion
 
@@ -256,8 +236,8 @@ internal class RegionManager
     }
     #endregion
 
-    #region 删除区域方法
-    public static void RemoveRegion(TSPlayer plr, string Input, bool del = false)
+    #region 删除区域与游戏中地图建筑方法 /cb rm
+    public static void RemoveRegion(TSPlayer plr, string Input)
     {
         Region region = ParseRegionInput(plr, Input)!;
 
@@ -271,44 +251,18 @@ internal class RegionManager
             return;
         }
 
-        RemoveRegion(plr, region, del);
-    }
-    #endregion
-
-    #region 根据区域拥有者的操作记录:移除游戏中的建筑与区域方法
-    public static void RemoveRegion(TSPlayer plr, Region region, bool del = false)
-    {
-        if (region is null)
+        // 查找操作记录
+        var Operation = Map.FindOperation(region.Name, region.Owner);
+        if (Operation == null)
         {
-            plr.SendMessage("区域对象为空,请使用/cb rm 移除", color: Tool.RandomColors());
+            plr.SendErrorMessage($"未找到区域 {region.Name} 的操作记录，无法还原建筑");
             return;
         }
 
-        string RegionName = region.Name;
-        string Owner = region.Owner;
-
-        // 如果是执行 /cb rm 指令
-        if (del)
-        {
-            // 查找操作记录
-            var Operation = Map.FindOperation(RegionName, Owner);
-            if (Operation == null)
-            {
-                plr.SendErrorMessage($"未找到区域 {RegionName} 的操作记录，无法还原建筑");
-                return;
-            }
-
-            var area = Operation.Area;
-            SmartBack(plr, area.X, area.Y,
-                 area.X + area.Width - 1,
-                 area.Y + area.Height - 1, Operation);
-        }
-
-        // 2. 删除区域 与 访客记录
-        TShock.Regions.DeleteRegion(RegionName);
-        RegionTracker.RegionVisits.Remove(RegionName);
-        RegionTracker.LastVisitors.Remove(RegionName);
-        Map.DeleteTargetRecord(RegionName);
+        var area = Operation.Area;
+        SmartBack(plr, area.X, area.Y,
+             area.X + area.Width - 1,
+             area.Y + area.Height - 1, Operation);
     }
     #endregion
 
@@ -390,7 +344,7 @@ internal class RegionManager
     #endregion
 
     #region 根据区域原名 获取移除时间戳的名称
-    public static string GetDisplayName(string RegionName)
+    public static string GetBuildingName(string RegionName)
     {
         int LastUnderscore = RegionName.LastIndexOf('_');
         return LastUnderscore > 0 ? RegionName[..LastUnderscore] : RegionName;
@@ -487,7 +441,7 @@ internal class RegionManager
         if (plr.Name == region.Owner) return true;
 
         // 检查建筑条件
-        var building = Map.LoadClip(GetDisplayName(region.Name));
+        var building = Map.LoadClip(GetBuildingName(region.Name));
         if (building?.Conditions?.Count > 0 && !Condition.CheckGroup(plr.TPlayer, building.Conditions))
         {
             plr.SendErrorMessage($"无法复制！需要满足条件: {string.Join(", ", building.Conditions)}");

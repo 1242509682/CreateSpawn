@@ -124,7 +124,7 @@ public class AutoClear
             if (Since >= Config.AutoClear.ClearMins)
             {
                 TShock.Log.ConsoleInfo($"[复制建筑] 区域 {region.Name} 满足清理条件，开始清理");
-                RegionManager.RemoveRegion(TSPlayer.Server, region, true);
+                RegionManager.RemoveRegion(TSPlayer.Server, region.Name);
             }
         }
         catch (Exception ex)
@@ -174,7 +174,7 @@ public class AutoClear
                 // 检查是否满足清理条件
                 if (Since >= Config.AutoClear.ClearMins)
                 {
-                    RegionManager.RemoveRegion(TSPlayer.Server, region, true);
+                    RegionManager.RemoveRegion(TSPlayer.Server, region.Name);
                 }
                 else
                 {

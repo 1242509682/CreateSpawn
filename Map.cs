@@ -4,6 +4,7 @@ using Terraria.GameContent.Tile_Entities;
 using Terraria;
 using TShockAPI;
 using static CreateSpawn.CreateSpawn;
+using Newtonsoft.Json;
 
 namespace CreateSpawn;
 
@@ -756,62 +757,51 @@ public class Map
     #region 访客记录文件管理方法
     internal static readonly string VisitDataPath = Path.Combine(Paths, "区域访问记录"); // 访问记录存储目录
 
-    // 保存所有访问记录
-    public static void SaveAllRecords()
+    // 保存指定区域的访问记录
+    public static void SaveRegionRecords(string regionName)
     {
-        if (!Config?.VisitRecord?.SaveVisitData == true) return;
-
         try
         {
-            Directory.CreateDirectory(VisitDataPath);
-            int savedCount = 0;
-
-            // 保存区域访问记录
-            foreach (var region in RegionTracker.RegionVisits)
+            if (RegionTracker.RegionVisits.TryGetValue(regionName, out var visits))
             {
-                string regionName = region.Key;
-                var visits = region.Value;
+                string recordPath = Path.Combine(VisitDataPath, $"{regionName}.json");
+                Directory.CreateDirectory(Path.GetDirectoryName(recordPath)!);
 
-                LastVisitorRecord lastVisitor = new LastVisitorRecord();
-                if (RegionTracker.LastVisitors.TryGetValue(regionName, out var visitor))
-                {
-                    lastVisitor = visitor;
-                }
-
-                string filePath = Path.Combine(VisitDataPath, $"{regionName}.dat");
-
-                using (var fs = GZipWrite(filePath))
-                using (var writer = new BinaryWriter(fs))
-                {
-                    // 写入访问记录数量
-                    writer.Write(visits.Count);
-
-                    // 写入访问记录
-                    foreach (var visit in visits)
-                    {
-                        writer.Write(visit.PlayerName ?? "");
-                        writer.Write(visit.VisitCount);
-                        writer.Write(visit.LastVisitTime.Ticks);
-                    }
-
-                    // 写入最后访客记录
-                    writer.Write(lastVisitor.PlayerName ?? "");
-                    writer.Write(lastVisitor.VisitTime.Ticks);
-                }
-                savedCount++;
+                string json = JsonConvert.SerializeObject(visits, Formatting.Indented);
+                File.WriteAllText(recordPath, json);
             }
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[复制建筑] 保存所有访问记录失败: {ex.Message}");
+            TShock.Log.ConsoleError($"[复制建筑] 保存区域记录失败 {regionName}: {ex}");
+        }
+    }
+
+    // 加载指定区域的访问记录
+    public static void LoadRegionRecords(string regionName)
+    {
+        try
+        {
+            string recordPath = Path.Combine(VisitDataPath, $"{regionName}.json");
+            if (File.Exists(recordPath))
+            {
+                string json = File.ReadAllText(recordPath);
+                var visits = JsonConvert.DeserializeObject<List<TrackerMess>>(json);
+                if (visits != null)
+                {
+                    RegionTracker.RegionVisits[regionName] = visits;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 加载区域记录失败 {regionName}: {ex}");
         }
     }
 
     // 加载所有访问记录
     public static void LoadAllRecords()
     {
-        if (!Config?.VisitRecord?.SaveVisitData == true) return;
-
         try
         {
             if (!Directory.Exists(VisitDataPath))
@@ -837,11 +827,11 @@ public class Map
                     {
                         // 读取访问记录
                         int visitCount = reader.ReadInt32();
-                        var visits = new List<RegionVisitRecord>(visitCount);
+                        var visits = new List<TrackerMess>(visitCount);
 
                         for (int i = 0; i < visitCount; i++)
                         {
-                            visits.Add(new RegionVisitRecord
+                            visits.Add(new TrackerMess
                             {
                                 PlayerName = reader.ReadString(),
                                 VisitCount = reader.ReadInt32(),
@@ -884,7 +874,7 @@ public class Map
     }
 
     // 删除指定区域的访问记录文件
-    public static void DeleteTargetRecord(string regionName)
+    public static void DeleteRecord(string regionName)
     {
         try
         {

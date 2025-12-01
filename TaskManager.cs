@@ -133,7 +133,7 @@ public class TaskManager
                         RegionTracker.LastVisitors.Remove(task.Operation.CreatedRegion);
 
                         // 清理操作记录
-                        Map.DeleteTargetRecord(task.Operation.CreatedRegion);
+                        Map.DeleteRecord(task.Operation.CreatedRegion);
 
                         TShock.Log.ConsoleInfo($"[复制建筑] 清理任务关联区域: {task.Operation.CreatedRegion}");
                     }
@@ -209,7 +209,7 @@ public class TaskManager
 
                     RegionTracker.RegionVisits.Remove(RegionName);
                     RegionTracker.LastVisitors.Remove(RegionName);
-                    Map.DeleteTargetRecord(RegionName);
+                    Map.DeleteRecord(RegionName);
                 }
                 catch (Exception ex)
                 {
