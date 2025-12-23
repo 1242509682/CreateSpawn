@@ -15,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 2, 0);
+    public override Version Version => new(1, 2, 1);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护、访客统计、自动清理建筑、区域边界显示、进度限制粘贴";
     #endregion
 
@@ -31,11 +31,15 @@ public class CreateSpawn : TerrariaPlugin
         ServerApi.Hooks.ServerLeave.Register(this, OnServerLeave);
         On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod += WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
         TShockAPI.Commands.ChatCommands.Add(new Command("create.copy", Commands.CreateSpawnCMD, "cb", "复制建筑"));
+
         // 注册 RegionHooks 事件
         RegionHooks.RegionEntered += OnRegionEntered;
         RegionHooks.RegionLeft += OnRegionLeft;
         RegionHooks.RegionDeleted += OnRegionDeleted;
         GetDataHandlers.PlayerBuffUpdate.Register(this.PlayerBuffUpdate!);
+
+        // 精密线控仪事件：用于/cb s 画选区
+        GetDataHandlers.MassWireOperation += OnMassWire;
     }
 
     protected override void Dispose(bool disposing)
@@ -49,11 +53,14 @@ public class CreateSpawn : TerrariaPlugin
             ServerApi.Hooks.ServerLeave.Deregister(this, OnServerLeave);
             On.Terraria.WorldGen.AddGenerationPass_string_WorldGenLegacyMethod -= WorldGen_AddGenerationPass_string_WorldGenLegacyMethod;
             TShockAPI.Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == Commands.CreateSpawnCMD);
+
             // 注销 RegionHooks 事件
             RegionHooks.RegionEntered -= OnRegionEntered;
             RegionHooks.RegionLeft -= OnRegionLeft;
             RegionHooks.RegionDeleted -= OnRegionDeleted;
             GetDataHandlers.PlayerBuffUpdate.UnRegister(this.PlayerBuffUpdate!);
+
+            GetDataHandlers.MassWireOperation -= OnMassWire;
         }
         base.Dispose(disposing);
     }
@@ -162,6 +169,42 @@ public class CreateSpawn : TerrariaPlugin
     }
     #endregion
 
+    #region 精密线控仪事件（拉线选区）
+    private static void OnMassWire(object sender, GetDataHandlers.MassWireOperationEventArgs e)
+    {
+        var plr = e.Player;
+
+        // 检查是否在拉线模式
+        if (plr.GetData<bool?>("cbWire") == true)
+        {
+            // ToolMode BitFlags: 1=Red, 2=Green, 4=Blue, 8=Yellow, 16=Actuator, 32=Cutter
+            if (e.ToolMode == 1) // 红电线模式
+            {
+                int x1 = Math.Min(e.StartX, e.EndX);
+                int y1 = Math.Min(e.StartY, e.EndY);
+                int x2 = Math.Max(e.StartX, e.EndX);
+                int y2 = Math.Max(e.StartY, e.EndY);
+
+                // 边界调整
+                x2++;
+                y2++;
+
+                // 直接设置TempPoints
+                plr.TempPoints[0] = new Point(x1, y1);
+                plr.TempPoints[1] = new Point(x2, y2);
+
+                // 清除拉线数据
+                plr.RemoveData("cbWire");
+
+                plr.SendSuccessMessage($"拉线区域已记录: ({x1},{y1}) 到 ({x2},{y2})");
+                plr.SendInfoMessage("输入 /cb add [名称] 保存建筑");
+
+                e.Handled = true;
+            }
+        }
+    }
+    #endregion
+
     #region 游戏更新触发事件
     public static int GetUnixTimestamp => (int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
     internal static AutoClear AutoClear { get; private set; } // 自动清理管理器
@@ -184,6 +227,7 @@ public class CreateSpawn : TerrariaPlugin
         MyProjectile.Stop(args.Who);
         RegionTracker.OnPlayerLeave(args.Who); // 清理区域追踪器
         TaskManager.CancelTask(TShock.Players[args.Who]); // 取消玩家的所有任务
+        TShock.Players[args.Who].RemoveData("cbWire"); // 移除拉线数据
     }
     #endregion
 

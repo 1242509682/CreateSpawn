@@ -208,7 +208,7 @@ public class RegionTracker
     #endregion
 
     #region 刷新区域BUFF
-    public static long Time = 0;
+    private static long Time = 0;
     public void RefreshBuffs(TSPlayer plr)
     {
         if (Config?.RegionBuff?.Enabled != true) return;

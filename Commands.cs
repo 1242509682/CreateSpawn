@@ -54,24 +54,30 @@ internal class Commands
                 case "设置":
                     if (args.Parameters.Count < 2)
                     {
-                        plr.SendInfoMessage($"正确指令：/cb set <1/2> --选择复制的区域");
-                        break;
+                        // 进入拉线模式
+                        plr.SetData("cbWire", true);
+                        plr.SendInfoMessage("进入拉线模式，请选择区域（使用[i:3611]精密线控仪）");
+                        plr.SendInfoMessage("选择后，输入 /cb add [名称] 保存建筑");
                     }
-
-                    switch (args.Parameters[1].ToLower())
+                    else
                     {
-                        case "1":
-                            plr.AwaitingTempPoint = 1;
-                            plr.SendInfoMessage("请选择复制区域的左上角");
-                            break;
-                        case "2":
-                            plr.AwaitingTempPoint = 2;
-                            plr.SendInfoMessage("请选择复制区域的右下角");
-                            break;
-                        default:
-                            plr.SendInfoMessage($"正确指令：/cb set <1/2> --选择复制的区域");
-                            plr.SendInfoMessage("/cb save");
-                            break;
+                        switch (args.Parameters[1].ToLower())
+                        {
+                            case "1":
+                                plr.AwaitingTempPoint = 1;
+                                plr.SendInfoMessage("请选择复制区域的左上角");
+                                break;
+                            case "2":
+                                plr.AwaitingTempPoint = 2;
+                                plr.SendInfoMessage("请选择复制区域的右下角");
+                                break;
+                            default:
+                                // 如果参数不是1或2，也进入拉线模式
+                                plr.SetData("cbWire", true);
+                                plr.SendInfoMessage("进入拉线模式，请选择区域（使用[i:3611]精密线控仪）");
+                                plr.SendInfoMessage("选择后，输入 /cb add [名称] 保存建筑");
+                                break;
+                        }
                     }
                     break;
 
@@ -121,8 +127,8 @@ internal class Commands
                         if (plr.TempPoints[0].X == 0 || plr.TempPoints[1].X == 0)
                         {
                             plr.SendInfoMessage("您还没有选择区域！");
-                            plr.SendMessage("使用方法: /cb s 1 选择左上角", color);
-                            plr.SendMessage("使用方法: /cb s 2 选择右下角", color);
+                            plr.SendMessage("使用方法1: /cb s 1和2 选择左上角与右下角", color);
+                            plr.SendMessage("使用方法2: /cb s 进入拉线模式", Tool.RandomColors());
                             return;
                         }
 
@@ -1145,8 +1151,7 @@ internal class Commands
             if (plr.HasPermission(Config.IsAdamin))
             {
                 mess.Append($"/cb on与off ——启用与关闭开服出生点生成\n" +
-                            $"/cb s 1 ——敲击或放置一个方块到左上角\n" +
-                            $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
+                            $"/cb s ——使用精密线控仪画选区\n" +
                             $"/cb add 名字 ——添加建筑(sv)\n" +
                             $"/cb sp <索引/名字> ——生成建筑(pt)\n" +
                             $"/cb bk ——还原图格\n" +
@@ -1165,8 +1170,7 @@ internal class Commands
             }
             else
             {
-                mess.Append($"/cb s 1 ——敲击或放置一个方块到左上角\n" +
-                            $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
+                mess.Append($"/cb s ——使用精密线控仪画选区\n" +
                             $"/cb add 名字 ——添加建筑(sv)\n" +
                             $"/cb sp <索引/名字> ——生成建筑(pt)\n" +
                             $"/cb bk ——还原图格\n" +
@@ -1186,8 +1190,7 @@ internal class Commands
         {
             plr.SendMessage("《复制建筑》\n" +
                         $"/cb on与off ——启用关闭开服出生点生成\n" +
-                        $"/cb s 1 ——敲击或放置一个方块到左上角\n" +
-                        $"/cb s 2 ——敲击或放置一个方块到右下角\n" +
+                        $"/cb s ——使用精密线控仪画选区\n" +
                         $"/cb add 名字 ——添加建筑(sv)\n" +
                         $"/cb sp [索引/名字] ——生成建筑(pt)\n" +
                         $"/cb bk ——还原图格\n" +
