@@ -139,7 +139,10 @@ public static class MyProjectile
     #region 更新所有玩家显示
     public static void UpdateAll()
     {
-        if (!Config.ShowArea.Enabled || ProjState.IsEmpty)
+        if (Config.ShowArea is null ||
+            !Config.ShowArea.Enabled ||
+            ProjState is null ||
+            ProjState.IsEmpty)
             return;
 
         // 定期清理（每30秒一次）

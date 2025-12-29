@@ -29,18 +29,20 @@ public class AutoClearData
 
 public class AutoClear
 {
-    private DateTime LastCheckTime = DateTime.Now;
-    private DateTime LastHandleTime = DateTime.Now;
-    private readonly ConcurrentQueue<Region> HandleQueue = new();
-    private bool InHandle = false;
+    private static DateTime LastCheckTime = DateTime.Now;
+    private static DateTime LastHandleTime = DateTime.Now;
+    private static readonly ConcurrentQueue<Region> HandleQueue = new();
+    private static bool InHandle = false;
 
     #region 在游戏更新中检查清理条件
-    public void CheckAutoClear()
+    public static void CheckAutoClear()
     {
-        if (Config?.AutoClear?.Enabled != true) return;
+        if (Config is null || Config.AutoClear is null ||
+            Config.VisitRecord is null ||
+            !Config.AutoClear.Enabled) return;
 
         // 检查访客记录功能是否开启
-        if (Config?.VisitRecord?.Enabled != true)
+        if (!Config.VisitRecord.Enabled)
         {
             // 只在第一次检测到时记录一次警告
             if (LastCheckTime == DateTime.Now)
@@ -75,7 +77,7 @@ public class AutoClear
     #endregion
 
     #region 填充清理队列
-    private void RefillClearQueue()
+    private static void RefillClearQueue()
     {
         try
         {
@@ -101,7 +103,7 @@ public class AutoClear
     #endregion
 
     #region 处理下一个区域
-    private void ProcessNextRegion()
+    private static void ProcessNextRegion()
     {
         if (HandleQueue.IsEmpty || InHandle) return;
 

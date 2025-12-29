@@ -64,14 +64,14 @@ public class RegionTracker
     }
 
     // 领地BUFF相关的玩家集合
-    private readonly HashSet<TSPlayer> ZoneRegion = new();
+    private static readonly HashSet<TSPlayer> ZoneRegion = new();
 
     // 访问统计存储
     public static Dictionary<string, List<TrackerMess>> RegionVisits = new();
     public static Dictionary<string, LastVisitorRecord> LastVisitors = new();
 
     #region 处理玩家进入插件区域
-    public void RegionEntry(TSPlayer plr, string regionName)
+    public static void RegionEntry(TSPlayer plr, string regionName)
     {
         if (plr == null || !plr.Active || !Config.VisitRecord.Enabled)
             return;
@@ -129,7 +129,7 @@ public class RegionTracker
     #endregion
 
     #region 处理玩家离开插件区域
-    public void RegionExit(TSPlayer plr, string regionName)
+    public static void RegionExit(TSPlayer plr, string regionName)
     {
         if (plr == null || !Config.VisitRecord.Enabled)
             return;
@@ -160,7 +160,7 @@ public class RegionTracker
     #endregion
 
     #region 处理区域被删除
-    public void RegionDeleted(string regionName)
+    public static void RegionDeleted(string regionName)
     {
         // 清理内存中的记录
         RegionVisits.Remove(regionName);
@@ -182,7 +182,7 @@ public class RegionTracker
     #endregion
 
     #region 区域BUFF处理方法
-    private int[] GetBuff(string regionName)
+    private static int[] GetBuff(string regionName)
     {
         if (regionName is null || 
             Config.RegionBuff?.ZoneBuffs is null)
@@ -208,8 +208,7 @@ public class RegionTracker
     #endregion
 
     #region 刷新区域BUFF
-    private static long Time = 0;
-    public void RefreshBuffs(TSPlayer plr)
+    public static void RefreshBuffs(TSPlayer plr)
     {
         if (Config?.RegionBuff?.Enabled != true) return;
 
@@ -243,7 +242,7 @@ public class RegionTracker
     #endregion
 
     #region 更新访问统计记录
-    private void UpdateRecords(string regionName, string playerName)
+    private static void UpdateRecords(string regionName, string playerName)
     {
         if (!RegionVisits.ContainsKey(regionName))
         {
@@ -279,7 +278,7 @@ public class RegionTracker
     #endregion
 
     #region 更新上一个访客记录
-    private void UpdateLastVisitor(string regionName, string playerName)
+    private static void UpdateLastVisitor(string regionName, string playerName)
     {
         LastVisitors[regionName] = new LastVisitorRecord
         {
@@ -290,7 +289,7 @@ public class RegionTracker
     #endregion
 
     #region 显示访问统计信息
-    private void ShowVisitTotal(TSPlayer plr, string regionName, VisitRecordData data)
+    private static void ShowVisitTotal(TSPlayer plr, string regionName, VisitRecordData data)
     {
         if (!RegionVisits.ContainsKey(regionName) || !RegionVisits[regionName].Any())
             return;
@@ -370,7 +369,7 @@ public class RegionTracker
     #endregion
 
     #region 格式化时间显示
-    private string FormatTime(DateTime time)
+    private static string FormatTime(DateTime time)
     {
         var diff = DateTime.Now - time;
 
@@ -386,7 +385,7 @@ public class RegionTracker
     #endregion
 
     #region 玩家离开时清理
-    public void OnPlayerLeave(int playerIndex)
+    public static void OnPlayerLeave(int playerIndex)
     {
         // 从领地BUFF集合中移除
         var plr = TShock.Players[playerIndex];

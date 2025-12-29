@@ -376,7 +376,8 @@ public class TaskManager
     #region 每帧更新处理分帧任务
     public static void OnGameUpdate()
     {
-        if (FrameTaskQueue.IsEmpty) return;
+        if (FrameTaskQueue is null ||
+            FrameTaskQueue.IsEmpty) return;
 
         DateTime now = DateTime.Now;
 

@@ -83,34 +83,39 @@ public class CreateSpawn : TerrariaPlugin
     #region 加载完世界后打开插件开关方法
     private void GamePost(EventArgs args)
     {
-        if (Config.SpawnEnabled)
+        try
         {
-            var name = "出生点";
-            var clip = Map.LoadClip(name);
-            if (clip == null)
+            if (Config.SpawnEnabled)
             {
-                TShock.Utils.Broadcast($"未找到名为 {name} 的建筑!", 240, 250, 150);
-                return;
+                var name = "出生点";
+                var clip = Map.LoadClip(name);
+                if (clip == null)
+                {
+                    TShock.Utils.Broadcast($"未找到名为 {name} 的建筑!", 240, 250, 150);
+                    return;
+                }
+
+                // 微调参数计算（仿照 SmartSpawn）
+                int spwx = Main.spawnTileX; // 出生点 X（单位是图格）
+                int spwy = Main.spawnTileY; // 出生点 Y
+
+                int startX = spwx - Config.CentreX + Config.AdjustX;
+                int startY = spwy - Config.CountY + Config.AdjustY;
+
+                SmartSpawn(TSPlayer.Server, startX, startY, clip, name);
+
+                Config.SpawnEnabled = false;
+                Config.Write();
             }
 
-            // 微调参数计算（仿照 SmartSpawn）
-            int spwx = Main.spawnTileX; // 出生点 X（单位是图格）
-            int spwy = Main.spawnTileY; // 出生点 Y
-
-            int startX = spwx - Config.CentreX + Config.AdjustX;
-            int startY = spwy - Config.CountY + Config.AdjustY;
-
-            SmartSpawn(TSPlayer.Server, startX, startY, clip, name);
-
-            Config.SpawnEnabled = false;
-            Config.Write();
+            if (Config.VisitRecord.Enabled &&
+                Config.VisitRecord.SaveVisitData)
+                Map.LoadAllRecords(); // 加载访问记录
         }
-
-        AutoClear = new AutoClear(); // 初始化自动清理
-
-        if (Config.VisitRecord.Enabled &&
-            Config.VisitRecord.SaveVisitData)
-            Map.LoadAllRecords(); // 加载访问记录
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 出生点生成异常: {ex}");
+        }
     }
 
     private void WorldGen_AddGenerationPass_string_WorldGenLegacyMethod(On.Terraria.WorldGen.orig_AddGenerationPass_string_WorldGenLegacyMethod orig, string name, WorldGenLegacyMethod method)
@@ -207,17 +212,23 @@ public class CreateSpawn : TerrariaPlugin
 
     #region 游戏更新触发事件
     public static int GetUnixTimestamp => (int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
-    internal static AutoClear AutoClear { get; private set; } // 自动清理管理器
     private void OnGameUpdate(EventArgs args)
     {
-        // 更新边界显示（不再需要检查玩家位置）
-        MyProjectile.UpdateAll();
+        try
+        {
+            // 更新边界显示（不再需要检查玩家位置）
+            MyProjectile.UpdateAll();
 
-        // 自动清理检查
-        AutoClear.CheckAutoClear();
+            // 自动清理检查
+            AutoClear.CheckAutoClear();
 
-        // 处理分帧任务
-        TaskManager.OnGameUpdate();
+            // 处理分帧任务
+            TaskManager.OnGameUpdate();
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 游戏更新事件异常: {ex}");
+        }
     }
     #endregion
 
@@ -232,7 +243,6 @@ public class CreateSpawn : TerrariaPlugin
     #endregion
 
     #region 区域检测事件
-    internal static RegionTracker RegionTracker = new(); // 区域访问记录
     private void OnRegionEntered(RegionHooks.RegionEnteredEventArgs args)
     {
         if (RegionManager.IsPluginRegion(args.Region.Name))
