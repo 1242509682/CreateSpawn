@@ -15,7 +15,7 @@ public class CreateSpawn : TerrariaPlugin
     #region 插件信息
     public override string Name => "复制建筑";
     public override string Author => "少司命 羽学";
-    public override Version Version => new(1, 2, 1);
+    public override Version Version => new(1, 2, 2);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护、访客统计、自动清理建筑、区域边界显示、进度限制粘贴";
     #endregion
 
@@ -39,7 +39,7 @@ public class CreateSpawn : TerrariaPlugin
         GetDataHandlers.PlayerBuffUpdate.Register(this.PlayerBuffUpdate!);
 
         // 精密线控仪事件：用于/cb s 画选区
-        GetDataHandlers.MassWireOperation += OnMassWire;
+        GetDataHandlers.MassWireOperation += OnMassWire!;
     }
 
     protected override void Dispose(bool disposing)
@@ -60,7 +60,7 @@ public class CreateSpawn : TerrariaPlugin
             RegionHooks.RegionDeleted -= OnRegionDeleted;
             GetDataHandlers.PlayerBuffUpdate.UnRegister(this.PlayerBuffUpdate!);
 
-            GetDataHandlers.MassWireOperation -= OnMassWire;
+            GetDataHandlers.MassWireOperation -= OnMassWire!;
         }
         base.Dispose(disposing);
     }
@@ -107,10 +107,6 @@ public class CreateSpawn : TerrariaPlugin
                 Config.SpawnEnabled = false;
                 Config.Write();
             }
-
-            if (Config.VisitRecord.Enabled &&
-                Config.VisitRecord.SaveVisitData)
-                Map.LoadAllRecords(); // 加载访问记录
         }
         catch (Exception ex)
         {

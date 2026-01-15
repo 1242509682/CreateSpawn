@@ -203,7 +203,7 @@ internal class Commands
                         }
 
                         // 直接调用 RegionTracker 的方法
-                        CreateSpawn.RegionTracker.ShowRecords(plr, Region.Name);
+                        RegionTracker.ShowRecords(plr, Region.Name);
                     }
                     break;
 

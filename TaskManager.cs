@@ -128,12 +128,8 @@ public class TaskManager
                             TShock.Regions.DeleteRegion(task.Operation.CreatedRegion);
                         }
 
-                        // 清理访客记录
-                        RegionTracker.RegionVisits.Remove(task.Operation.CreatedRegion);
-                        RegionTracker.LastVisitors.Remove(task.Operation.CreatedRegion);
-
-                        // 清理操作记录
-                        Map.DeleteRecord(task.Operation.CreatedRegion);
+                        // 清理访问记录
+                        RegionTracker.DeleteRecord(task.Operation.CreatedRegion);
 
                         TShock.Log.ConsoleInfo($"[复制建筑] 清理任务关联区域: {task.Operation.CreatedRegion}");
                     }
@@ -207,9 +203,7 @@ public class TaskManager
                         TShock.Regions.DeleteRegion(RegionName);
                     }
 
-                    RegionTracker.RegionVisits.Remove(RegionName);
-                    RegionTracker.LastVisitors.Remove(RegionName);
-                    Map.DeleteRecord(RegionName);
+                    RegionTracker.DeleteRecord(RegionName);
                 }
                 catch (Exception ex)
                 {

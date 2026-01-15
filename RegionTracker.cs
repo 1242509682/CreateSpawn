@@ -1,5 +1,4 @@
-﻿using Terraria;
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using TShockAPI;
 using static CreateSpawn.CreateSpawn;
@@ -11,8 +10,6 @@ public class VisitRecordData
 {
     [JsonProperty("启用")]
     public bool Enabled { get; set; } = true;
-    [JsonProperty("保存访问数据")]
-    public bool SaveVisitData { get; set; } = true;
     [JsonProperty("进入消息")]
     public string EnterMessage { get; set; } = "\n你进入了建筑区域: [c/478ED2:{0}] 归属: [c/47D1BE:{1}] \n复制条件:[c/F0E852:{2}]";
     [JsonProperty("离开消息")]
@@ -41,16 +38,12 @@ public class RegionBuff
 // 区域访问记录
 public class TrackerMess
 {
+    [JsonProperty("访客名称")]
     public string PlayerName { get; set; } = string.Empty;
+    [JsonProperty("访问次数")]
     public int VisitCount { get; set; } = 0;
-    public DateTime LastVisitTime { get; set; } = DateTime.MinValue; // 改为 DateTime
-}
-
-// 上一个访客记录
-public class LastVisitorRecord
-{
-    public string PlayerName { get; set; } = string.Empty;
-    public DateTime VisitTime { get; set; } = DateTime.MinValue; // 改为 DateTime
+    [JsonProperty("访问时间")]
+    public DateTime VisitTime { get; set; } = DateTime.MinValue;
 }
 
 public class RegionTracker
@@ -66,10 +59,6 @@ public class RegionTracker
     // 领地BUFF相关的玩家集合
     private static readonly HashSet<TSPlayer> ZoneRegion = new();
 
-    // 访问统计存储
-    public static Dictionary<string, List<TrackerMess>> RegionVisits = new();
-    public static Dictionary<string, LastVisitorRecord> LastVisitors = new();
-
     #region 处理玩家进入插件区域
     public static void RegionEntry(TSPlayer plr, string regionName)
     {
@@ -79,11 +68,16 @@ public class RegionTracker
         var data = Config.VisitRecord;
         var color = new Color(240, 250, 150);
 
+        // **在更新前获取上个人的信息**
+        string LastBefore = GetLastVisitor(regionName);
+        DateTime LastTime = GetLastTime(regionName);
+        var (topName, topCount) = GetTopVisitor(regionName);
+
         // 获取区域信息
         var Info = GetInfo(regionName);
 
         // 更新访问统计
-        UpdateRecords(regionName, plr.Name);
+        UpdateVisit(regionName, plr.Name);
 
         // 显示进入消息
         if (!string.IsNullOrEmpty(data.EnterMessage))
@@ -97,11 +91,8 @@ public class RegionTracker
         // 显示访问统计
         if (RegionManager.HasRegionPermission(plr, regionName))
         {
-            ShowVisitTotal(plr, regionName, data);
+            ShowVisitTotal(plr, regionName, data, LastBefore, LastTime, topName, topCount);
         }
-
-        // 更新上一个访客记录
-        UpdateLastVisitor(regionName, plr.Name);
 
         // 处理领地BUFF
         if (Config.RegionBuff?.Enabled == true)
@@ -118,12 +109,6 @@ public class RegionTracker
                     }
                 }
             }
-        }
-
-        // 保存访问记录（异步）
-        if (data.SaveVisitData)
-        {
-            Task.Run(() => Map.SaveRegionRecords(regionName));
         }
     }
     #endregion
@@ -162,11 +147,8 @@ public class RegionTracker
     #region 处理区域被删除
     public static void RegionDeleted(string regionName)
     {
-        // 清理内存中的记录
-        RegionVisits.Remove(regionName);
-        LastVisitors.Remove(regionName);
         // 清理文件记录
-        Map.DeleteRecord(regionName);
+        DeleteRecord(regionName);
 
         // 清理领地BUFF相关的玩家
         var RemoveBuff = ZoneRegion
@@ -241,94 +223,59 @@ public class RegionTracker
     }
     #endregion
 
-    #region 更新访问统计记录
-    private static void UpdateRecords(string regionName, string playerName)
-    {
-        if (!RegionVisits.ContainsKey(regionName))
-        {
-            RegionVisits[regionName] = new List<TrackerMess>();
-        }
-
-        var visits = RegionVisits[regionName];
-        var record = visits.FirstOrDefault(r => r.PlayerName == playerName);
-
-        if (record != null)
-        {
-            // 更新现有记录
-            record.VisitCount++;
-            record.LastVisitTime = DateTime.Now;
-        }
-        else
-        {
-            // 创建新记录
-            visits.Add(new TrackerMess
-            {
-                PlayerName = playerName,
-                VisitCount = 1,
-                LastVisitTime = DateTime.Now
-            });
-        }
-
-        // 按访问次数排序
-        RegionVisits[regionName] = visits
-            .OrderByDescending(r => r.VisitCount)
-            .ThenByDescending(r => r.LastVisitTime)
-            .ToList();
-    } 
-    #endregion
-
-    #region 更新上一个访客记录
-    private static void UpdateLastVisitor(string regionName, string playerName)
-    {
-        LastVisitors[regionName] = new LastVisitorRecord
-        {
-            PlayerName = playerName,
-            VisitTime = DateTime.Now
-        };
-    }
-    #endregion
-
     #region 显示访问统计信息
-    private static void ShowVisitTotal(TSPlayer plr, string regionName, VisitRecordData data)
+    private static void ShowVisitTotal(TSPlayer plr, string regionName, VisitRecordData data,
+                                       string LastBefore, DateTime LastTime,
+                                       string topName, int topCount)
     {
-        if (!RegionVisits.ContainsKey(regionName) || !RegionVisits[regionName].Any())
-            return;
+        var visits = GetVisit(regionName);
+        if (visits.Count == 0) return;
 
-        var visits = RegionVisits[regionName];
-        int totalVisits = visits.Sum(r => r.VisitCount);
-        int displayCount = Math.Min(data.ShowVisitorCount, visits.Count);
+        int total = visits.Sum(r => r.VisitCount);
+        int count = Math.Min(data.ShowVisitorCount, visits.Count);
         var color = new Color(240, 250, 150);
 
         // 显示访问统计
         if (!string.IsNullOrEmpty(data.StatsTitle) && !string.IsNullOrEmpty(data.TotalVisitsText))
         {
             plr.SendMessage(data.StatsTitle, color);
-            for (int i = 0; i < displayCount; i++)
+            for (int i = 0; i < count; i++)
             {
                 var record = visits[i];
                 plr.SendMessage($"[c/D0AFEB:{i + 1}.] [c/FFFFFF:{record.PlayerName}] 访问:[c/478ED2:{record.VisitCount}]次", color);
             }
-            plr.SendMessage(string.Format(data.TotalVisitsText, totalVisits), color);
+            plr.SendMessage(string.Format(data.TotalVisitsText, total), color);
         }
 
         // 显示访问最高者
-        if (!string.IsNullOrEmpty(data.TopVisitorText) && visits.Count > 0)
+        if (!string.IsNullOrEmpty(data.TopVisitorText) && !string.IsNullOrEmpty(topName))
         {
-            var topVisitor = visits[0];
-            plr.SendMessage(string.Format(data.TopVisitorText, topVisitor.PlayerName, topVisitor.VisitCount), color);
+            plr.SendMessage(string.Format(data.TopVisitorText, topName, topCount), color);
         }
 
-        // 显示最后访客
-        if (!string.IsNullOrEmpty(data.LastVisitorText) && LastVisitors.TryGetValue(regionName, out var lastVisitor))
+        // 显示最后访客（上一个人）
+        if (!string.IsNullOrEmpty(data.LastVisitorText) && !string.IsNullOrEmpty(LastBefore))
         {
-            string timeText = FormatTime(lastVisitor.VisitTime);
-            plr.SendMessage(string.Format(data.LastVisitorText, lastVisitor.PlayerName, timeText), color);
+            // 如果上个人是自己，尝试找再上一个人
+            if (LastBefore == plr.Name)
+            {
+                // 获取除了当前玩家外的其他访客
+                var other = visits.Where(v => v.PlayerName != plr.Name).ToList();
+                if (other.Count > 0)
+                {
+                    LastBefore = other.OrderByDescending(v => v.VisitTime).First().PlayerName;
+                    LastTime = other.Max(v => v.VisitTime);
+                }
+            }
+
+            string timeText = FormatTime(LastTime);
+            plr.SendMessage(string.Format(data.LastVisitorText, LastBefore, timeText), color);
         }
     }
     #endregion
 
     #region 显示指定区域的访客记录
-    public void ShowRecords(TSPlayer plr, string regionName)
+    public static void ShowRecords(TSPlayer plr, string regionName)
     {
         var data = Config?.VisitRecord;
         if (data == null) return;
@@ -340,8 +287,41 @@ public class RegionTracker
         // 显示区域信息
         plr.SendMessage($"\n区域: [c/478ED2:{Info.Name}] 归属: [c/47D1BE:{Info.Owner}]", color);
 
+        // 获取统计数据
+        var visits = GetVisit(regionName);
+        if (visits.Count == 0) return;
+
+        int total = visits.Sum(r => r.VisitCount);
+        var (topName, topCount) = GetTopVisitor(regionName);
+        string Visitor = GetLastVisitor(regionName);
+        DateTime Time = GetLastTime(regionName);
+
+        int count = Math.Min(data.ShowVisitorCount, visits.Count);
+
         // 显示统计信息
-        ShowVisitTotal(plr, regionName, data);
+        if (!string.IsNullOrEmpty(data.StatsTitle) && !string.IsNullOrEmpty(data.TotalVisitsText))
+        {
+            plr.SendMessage(data.StatsTitle, color);
+            for (int i = 0; i < count; i++)
+            {
+                var record = visits[i];
+                plr.SendMessage($"[c/D0AFEB:{i + 1}.] [c/FFFFFF:{record.PlayerName}] 访问:[c/478ED2:{record.VisitCount}]次", color);
+            }
+            plr.SendMessage(string.Format(data.TotalVisitsText, total), color);
+        }
+
+        // 显示访问最高者
+        if (!string.IsNullOrEmpty(data.TopVisitorText) && !string.IsNullOrEmpty(topName))
+        {
+            plr.SendMessage(string.Format(data.TopVisitorText, topName, topCount), color);
+        }
+
+        // 显示最后访客
+        if (!string.IsNullOrEmpty(data.LastVisitorText) && !string.IsNullOrEmpty(Visitor))
+        {
+            string timeText = FormatTime(Time);
+            plr.SendMessage(string.Format(data.LastVisitorText, Visitor, timeText), color);
+        }
     }
     #endregion
 
@@ -392,6 +372,177 @@ public class RegionTracker
         if (plr != null && ZoneRegion.Contains(plr))
         {
             ZoneRegion.Remove(plr);
+        }
+    }
+    #endregion
+
+    #region 访客记录文件管理方法
+    internal static readonly string VisitPath = Path.Combine(Map.Paths, "区域访问记录");
+
+    // 获取区域访问记录（直接从文件读取）
+    public static List<TrackerMess> GetVisit(string regionName)
+    {
+        try
+        {
+            string filePath = Path.Combine(VisitPath, $"{regionName}.json");
+            if (!File.Exists(filePath))
+                return new List<TrackerMess>();
+
+            string json = File.ReadAllText(filePath);
+            return JsonConvert.DeserializeObject<List<TrackerMess>>(json) ?? new List<TrackerMess>();
+        }
+        catch
+        {
+            return new List<TrackerMess>();
+        }
+    }
+
+    // 获取最后访问时间（直接从文件计算）
+    public static DateTime GetLastTime(string regionName)
+    {
+        try
+        {
+            string filePath = Path.Combine(VisitPath, $"{regionName}.json");
+            if (!File.Exists(filePath))
+                return DateTime.MinValue;
+
+            string json = File.ReadAllText(filePath);
+            var visits = JsonConvert.DeserializeObject<List<TrackerMess>>(json);
+
+            if (visits == null || visits.Count == 0)
+                return DateTime.MinValue;
+
+            // 找到最新的访问时间
+            return visits.Max(v => v.VisitTime);
+        }
+        catch
+        {
+            return DateTime.MinValue;
+        }
+    }
+
+    // 获取最后访客名称（直接从文件计算）
+    public static string GetLastVisitor(string regionName)
+    {
+        try
+        {
+            string filePath = Path.Combine(VisitPath, $"{regionName}.json");
+            if (!File.Exists(filePath))
+                return string.Empty;
+
+            string json = File.ReadAllText(filePath);
+            var visits = JsonConvert.DeserializeObject<List<TrackerMess>>(json);
+
+            if (visits == null || visits.Count == 0)
+                return string.Empty;
+
+            // 找到最新的访问记录
+            return visits.OrderByDescending(v => v.VisitTime)
+                         .FirstOrDefault()?.PlayerName ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    // 更新访问记录（直接写入文件）
+    public static void UpdateVisit(string regionName, string playerName)
+    {
+        try
+        {
+            string filePath = Path.Combine(VisitPath, $"{regionName}.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+
+            // 读取现有记录
+            var visits = GetVisit(regionName);
+
+            // 更新记录
+            var record = visits.FirstOrDefault(r => r.PlayerName == playerName);
+            if (record != null)
+            {
+                record.VisitCount++;
+                record.VisitTime = DateTime.Now;
+            }
+            else
+            {
+                visits.Add(new TrackerMess
+                {
+                    PlayerName = playerName,
+                    VisitCount = 1,
+                    VisitTime = DateTime.Now
+                });
+            }
+
+            // 排序并保存
+            visits = visits
+                .OrderByDescending(r => r.VisitCount)
+                .ThenByDescending(r => r.VisitTime)
+                .ToList();
+
+            string json = JsonConvert.SerializeObject(visits, Formatting.Indented);
+            File.WriteAllText(filePath, json);
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 更新失败 {regionName}: {ex}");
+        }
+    }
+
+    // 获取访问最高者
+    public static (string Name, int Count) GetTopVisitor(string regionName)
+    {
+        var visits = GetVisit(regionName);
+        if (visits.Count == 0) return (string.Empty, 0);
+        var top = visits.OrderByDescending(v => v.VisitCount).First();
+        return (top.PlayerName, top.VisitCount);
+    }
+
+    // 删除记录文件
+    public static void DeleteRecord(string regionName)
+    {
+        try
+        {
+            string filePath = Path.Combine(VisitPath, $"{regionName}.json");
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 删除失败 {regionName}: {ex.Message}");
+        }
+    }
+
+    // 清理所有记录
+    public static void ClearAllRecords()
+    {
+        try
+        {
+            if (!Directory.Exists(VisitPath)) return;
+
+            var files = Directory.GetFiles(VisitPath, "*.json");
+            int count = 0;
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    File.Delete(file);
+                    count++;
+                }
+                catch (Exception ex)
+                {
+                    TShock.Log.ConsoleError($"[复制建筑] 删除文件失败 {file}: {ex.Message}");
+                }
+            }
+
+            TShock.Log.ConsoleInfo($"[复制建筑] 已清理 {count} 个访问记录");
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[复制建筑] 清理失败: {ex.Message}");
         }
     }
     #endregion

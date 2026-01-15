@@ -265,16 +265,14 @@ public class AutoClear
     #region 获取区域最后访问时间
     public static DateTime GetLastVisitTime(string RegionName)
     {
-        // 优先检查最后访客记录（通常是最新的）
-        if (RegionTracker.LastVisitors.TryGetValue(RegionName, out var visitor))
-            return visitor.VisitTime;
-
-        // 如果没有最后访客记录，从访问统计中查找
-        if (RegionTracker.RegionVisits.TryGetValue(RegionName, out var visits) && visits.Count > 0)
-            return visits.Max(r => r.LastVisitTime);
+        // 直接调用Map方法获取最后访问时间
+        DateTime lastVisit = RegionTracker.GetLastTime(RegionName);
 
         // 如果没有访客记录，使用区域创建时间作为备用
-        return new DateTime(RegionManager.GetRegionCreationTime(RegionName));
+        if (lastVisit == DateTime.MinValue)
+            return new DateTime(RegionManager.GetRegionCreationTime(RegionName));
+
+        return lastVisit;
     }
     #endregion
 

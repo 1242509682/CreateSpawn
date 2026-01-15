@@ -39,7 +39,7 @@ internal class RegionManager
                 clip.RegionName = RegionName;
 
                 // 初始化访客记录 - 创建者作为第一个访客
-                SetDefaultVisitRecord(RegionName, plr.Name);
+                RegionTracker.UpdateVisit(RegionName, plr.Name);
 
                 TShock.Log.ConsoleInfo($"[复制建筑] 为建筑 '{BuildName}' 创建保护区域: {RegionName}");
                 return RegionName;
@@ -67,43 +67,6 @@ internal class RegionManager
 
         // 默认禁止建筑
         TShock.Regions.SetRegionState(RegionName, true);
-    }
-    #endregion
-
-    #region 初始化访客记录
-    private static void SetDefaultVisitRecord(string RegionName, string Owner)
-    {
-        if (!RegionTracker.RegionVisits.ContainsKey(RegionName))
-        {
-            RegionTracker.RegionVisits[RegionName] = new List<TrackerMess>();
-        }
-
-        // 添加创建者作为第一个访客
-        var visits = RegionTracker.RegionVisits[RegionName];
-        var Record = visits.FirstOrDefault(r => r.PlayerName == Owner);
-
-        if (Record == null)
-        {
-            visits.Add(new TrackerMess
-            {
-                PlayerName = Owner,
-                VisitCount = 1,
-                LastVisitTime = DateTime.Now
-            });
-        }
-
-        // 设置最后访客
-        RegionTracker.LastVisitors[RegionName] = new LastVisitorRecord
-        {
-            PlayerName = Owner,
-            VisitTime = DateTime.Now
-        };
-
-        // 立即保存记录
-        if (Config?.VisitRecord?.SaveVisitData == true)
-        {
-            Map.SaveRegionRecords(RegionName);
-        }
     }
     #endregion
 
@@ -136,16 +99,13 @@ internal class RegionManager
     {
         var regions = GetPluginRegions();
         int count = regions.Count(region => TShock.Regions.DeleteRegion(region.Name));
-        Map.ClearAllRecords(); // 清理访问记录
+        RegionTracker.ClearAllRecords(); // 清理访问记录
         TShock.Utils.Broadcast($"[复制建筑] 已清理 {count} 个保护区域", 250, 240, 150);
     }
     #endregion
 
     #region 获取由本插件创建的所有区域
-    public static List<Region> GetPluginRegions()
-    {
-        return TShock.Regions.Regions.Where(r => IsPluginRegion(r.Name)).ToList();
-    }
+    public static List<Region> GetPluginRegions() => TShock.Regions.Regions.Where(r => IsPluginRegion(r.Name)).ToList();
     #endregion
 
     #region 更新建筑保护区域方法（支持索引）
@@ -207,15 +167,15 @@ internal class RegionManager
         string playerName = action;
 
         // 检查玩家是否存在
-        var userAccount = TShock.UserAccounts.GetUserAccountByName(playerName);
-        if (userAccount == null)
+        var acc = TShock.UserAccounts.GetUserAccountByName(playerName);
+        if (acc == null)
         {
             plr.SendErrorMessage($"玩家 '{playerName}' 不存在!");
             return;
         }
 
         // 检查玩家是否已经在允许列表中
-        bool isAllowed = region.AllowedIDs.Contains(userAccount.ID);
+        bool isAllowed = region.AllowedIDs.Contains(acc.ID);
 
         if (isAllowed)
         {
@@ -373,14 +333,11 @@ internal class RegionManager
     #endregion
 
     #region 判断玩家是否在插件区域
-    public static bool InRegion(TSPlayer plr, string RegionName)
-    {
-        return plr != null &&
+    public static bool InRegion(TSPlayer plr, string RegionName) => plr != null &&
                plr.Active &&
                plr.CurrentRegion != null &&
                plr.CurrentRegion == GetRegionForPos(plr.TileX, plr.TileY) &&
                plr.CurrentRegion.Name == RegionName;
-    }
     #endregion
 
     #region 权限检查方法
@@ -403,14 +360,10 @@ internal class RegionManager
 
         return false;
     }
-    #endregion
 
-    #region 根据区域名称获取区域所有者
+    // 根据区域名称获取区域所有者
     public static string GetRegionOwner(string RegionName)
-    {
-        var region = TShock.Regions.GetRegionByName(RegionName);
-        return region?.Owner ?? "未知";
-    }
+    => TShock.Regions.GetRegionByName(RegionName)?.Owner ?? "未知";
     #endregion
 
     #region 检查是否为管理员区域
