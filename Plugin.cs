@@ -200,7 +200,6 @@ public class Plugin(Main game) : TerrariaPlugin(game)
         var asm = Assembly.GetExecutingAssembly();
         List<string> files = new() { "出生点.clip", };
 
-        int count = 0;
         foreach (var file in files)
         {
             var res = $"{asm.GetName().Name}.内嵌资源.{file}";
@@ -210,11 +209,8 @@ public class Plugin(Main game) : TerrariaPlugin(game)
 
             try
             {
-                using (var fs = File.Create(Path.Combine(ClipDir, file)))
-                {
-                    stream.CopyTo(fs);
-                }
-                count++;
+                using var fs = File.Create(Path.Combine(ClipDir, file));
+                stream.CopyTo(fs);
             }
             catch (Exception ex)
             {

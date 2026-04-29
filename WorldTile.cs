@@ -56,7 +56,11 @@ public static class WorldTile
             }
 
             SendMess(plr, $"\n正在从备份恢复 ({x1},{y1}) => ({x2},{y2})");
-            ProcessFix(plr, Mydata, snapPath, signPath, rect, e);
+            Fix(plr, Mydata, snapPath, signPath, rect, e);
+        }
+        else if (!string.IsNullOrEmpty(Mydata.rwPaste))
+        {
+            Paste(plr, Mydata, e.StartX, e.StartY, e.EndX, e.EndY, e);
         }
         else if (!string.IsNullOrEmpty(Mydata.rwCopy))
         {
@@ -121,7 +125,7 @@ public static class WorldTile
     /// <summary>
     /// 处理修复模式：从快照恢复指定区域，删除重叠区域，保存撤销状态，异步执行修复
     /// </summary>
-    private static void ProcessFix(TSPlayer plr, MyData Mydata, string snapPath, string signPath, Rectangle rect,
+    private static void Fix(TSPlayer plr, MyData Mydata, string snapPath, string signPath, Rectangle rect,
                                    GetDataHandlers.MassWireOperationEventArgs e)
     {
         // 1. 删除矩形内的所有现有区域（如果配置开启）
@@ -194,8 +198,149 @@ public static class WorldTile
     }
     #endregion
 
-    #region 批量区域操作指令
-    public static void HandleTileOp(CommandArgs args, TSPlayer plr)
+    #region 处理粘贴模式
+    /// <summary>
+    /// 处理粘贴模式：根据玩家框选的起点和终点，计算粘贴位置并执行粘贴
+    /// </summary>
+    private static void Paste(TSPlayer plr, MyData Mydata, int startX, int startY, int endX, int endY, GetDataHandlers.MassWireOperationEventArgs e)
+    {
+        string buildName = Mydata.rwPaste;
+        Mydata.rwPaste = string.Empty; // 清空状态，只执行一次
+
+        // 加载建筑
+        var clip = LoadClip(buildName);
+        if (clip == null)
+        {
+            SendMess(plr, $"建筑 '{buildName}' 加载失败");
+            e.Handled = true;
+            return;
+        }
+
+        int w = clip.Tiles?.GetLength(0) ?? 0;
+        int h = clip.Tiles?.GetLength(1) ?? 0;
+        if (w == 0 || h == 0)
+        {
+            SendMess(plr, "建筑数据无效");
+            e.Handled = true;
+            return;
+        }
+
+        Rectangle pRect;
+
+        // 如果起点与终点相同，则以该点为中心放置建筑
+        if (startX == endX && startY == endY)
+        {
+            int centerX = startX;
+            int centerY = startY;
+            int baseX = centerX - w / 2;
+            int baseY = centerY - h / 2;
+            pRect = new Rectangle(baseX, baseY, w, h);
+        }
+        else
+        {
+            // 计算方向
+            bool rightDir = endX > startX;   // 终点在起点的右边
+            bool downDir = endY > startY;    // 终点在起点的下边
+
+            int baseX, baseY;
+            if (rightDir && downDir)        // 起点左上 -> 终点右下：建筑左上角对齐起点
+            {
+                baseX = startX;
+                baseY = startY;
+            }
+            else if (!rightDir && downDir)  // 起点右上 -> 终点左下：建筑右上角对齐起点
+            {
+                baseX = startX - w + 1;
+                baseY = startY;
+            }
+            else if (rightDir && !downDir)  // 起点左下 -> 终点右上：建筑左下角对齐起点
+            {
+                baseX = startX;
+                baseY = startY - h + 1;
+            }
+            else // (!rightDir && !downDir) // 起点右下 -> 终点左上：建筑右下角对齐起点
+            {
+                baseX = startX - w + 1;
+                baseY = startY - h + 1;
+            }
+            pRect = new Rectangle(baseX, baseY, w, h);
+        }
+
+        // 边界检查
+        if (pRect.X < 0 || pRect.X + w >= Main.maxTilesX ||
+            pRect.Y < 0 || pRect.Y + h >= Main.maxTilesY)
+        {
+            SendMess(plr, "建筑超出世界边界，已取消粘贴");
+            e.Handled = true;
+            return;
+        }
+
+        // 检查是否与现有区域相交（只检查，不删除）
+        if (TShock.Regions.Regions.Any(r => r.Area.Intersects(pRect)))
+        {
+            SendMess(plr, "粘贴区域与其他区域重叠，已取消");
+            e.Handled = true;
+            return;
+        }
+
+        SendMess(plr, $"正在粘贴建筑 '{buildName}' 到矩形区域 ({pRect.X},{pRect.Y}) 尺寸 {w}x{h}");
+
+        // 自动创建区域
+        string regName = $"{plr.Name}_{DateTime.Now:yyyyMMddHHmmss}";
+        if (Config.CreateRegion)
+        {
+            if (!TShock.Regions.AddRegion(pRect.X, pRect.Y, w, h, regName, plr.Name, Main.worldID.ToString()))
+            {
+                SendMess(plr, "自动创建区域失败，粘贴已取消");
+                e.Handled = true;
+                return;
+            }
+            TShock.Regions.SetRegionState(regName, true);
+            if (!Config.CreatedReg.Contains(regName))
+            {
+                Config.CreatedReg.Add(regName);
+                Config.Write();
+            }
+        }
+
+        // 保存撤销状态
+        var beforeState = GetTileData(pRect);
+        var stack = LoadUndo(plr.Name);
+        stack.Push(new UndoOperation
+        {
+            RegionName = regName,
+            Area = pRect,
+            BeforeState = beforeState,
+            Timestamp = DateTime.Now
+        });
+        SaveUndo(plr.Name, stack);
+
+        // 偏移建筑数据到 pRect 左上角
+        var data = CloneOff(clip, pRect.X, pRect.Y);
+
+        int count = 0;
+        var sw = Stopwatch.StartNew();
+
+        Task.Run(() =>
+        {
+            KillAll(pRect.Left, pRect.Right - 1, pRect.Top, pRect.Bottom - 1);
+            count = FixTile(pRect, data, count);
+        }).ContinueWith(_ =>
+        {
+            FixItem(data, plr);
+            sw.Stop();
+            AnimMag.Add(pRect);
+            SendMess(plr, $"粘贴 '{buildName}' 完成！已粘贴 {count} 个图格，" +
+                          $"用时 {sw.ElapsedMilliseconds} ms\n" +
+                          $"撤销操作：/{MyCmd.cmd} bk");
+        });
+
+        e.Handled = true;
+    }
+    #endregion
+
+    #region 批量图格操作指令
+    public static void TileOp(CommandArgs args, TSPlayer plr)
     {
         if (args.Parameters.Count < 2)
         {
@@ -286,7 +431,7 @@ public static class WorldTile
     }
     #endregion
 
-    #region 设置统一区域操作模式
+    #region 设置统一图格操作模式
     public static void SetOpMode(TSPlayer plr, int op, int arg1 = 0, int arg2 = 0, int arg3 = 0)
     {
         var data = GetData(plr.Name);
@@ -702,7 +847,7 @@ public static class WorldTile
     }
     #endregion
 
-    #region 区域编辑实现
+    #region 图格编辑实现
     private static void ExecuteEdit(Rectangle rect, int op, int a1, int a2, int a3, int dir, int toolMode)
     {
         // 对于 op == 13，需要先扫描区域

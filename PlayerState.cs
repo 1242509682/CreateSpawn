@@ -27,8 +27,10 @@ internal class PlayerState
         public bool rwFix { get; set; } = false;
         // 待保存的建筑名称
         public string rwCopy { get; set; } = string.Empty;
+        // 待粘贴的建筑名称
+        public string rwPaste { get; set; } = string.Empty;
 
-        // 统一的区域操作模式
+        // 统一的图格操作模式
         public int rw = 0;          // 操作编号 1清理 2半砖 3方块 4墙壁 5电路 6喷漆 7液体
         public int rwA1 = 0;        // 参数1
         public int rwA2 = 0;        // 参数2
@@ -58,9 +60,11 @@ internal class PlayerState
     #endregion
 
     #region 精密线控仪事件（创建与删除区域）
-    public static void SetRegion(GetDataHandlers.MassWireOperationEventArgs e, TSPlayer plr, MyData Mydata, int x1, int y1, Rectangle rect)
+    public static void SetRegion(GetDataHandlers.MassWireOperationEventArgs e,
+                                 TSPlayer plr, MyData Mydata, int x1, int y1, Rectangle rect)
     {
-        var region = TShock.Regions.Regions.FirstOrDefault(r => r.InArea(rect));
+        // 使用 Intersects 检查矩形是否有交集（而不是 InArea 只检查左上角点）
+        var region = TShock.Regions.Regions.FirstOrDefault(r => r.Area.Intersects(rect));
 
         switch (Mydata.Mode)
         {

@@ -47,21 +47,24 @@ internal class MyCmd
                 $"{Icon(ItemID.FragmentVortex)}" +
                 $"[c/F2F2C7:开发] [c/BFDFEA:by] [c/00FFFF:羽学] " +
                 $"{Icon(ItemID.FragmentStardust)}");
-
-            sb.AppendLine($"/{cmd} r --创建与修改区域");
         }
         else
         {
             sb.AppendLine($"\n《{PluginName}》");
         }
-        sb.AppendLine($"/{cmd} t --操作图格");
-        sb.AppendLine($"/{cmd} sv <名称> --复制建筑");
-        sb.AppendLine($"/{cmd} pt [名称/索引] --粘贴建筑");
-        sb.AppendLine($"/{cmd} fix [索引] --修复区域");
+
+        sb.AppendLine($"/{cmd} sv --复制建筑");
+        sb.AppendLine($"/{cmd} pt --粘贴建筑");
         sb.AppendLine($"/{cmd} bk --撤销操作");
-        sb.AppendLine($"/{cmd} r --修改区域");
-        sb.AppendLine($"/{cmd} c --修改配置");
-        sb.AppendLine($"/{cmd} rs --重置数据");
+        sb.AppendLine($"/{cmd} fix --修复图格");
+
+        if (IsAdmin(plr))
+        {
+            sb.AppendLine($"/{cmd} t --操作图格");
+            sb.AppendLine($"/{cmd} r --修改区域");
+            sb.AppendLine($"/{cmd} c --修改配置");
+            sb.AppendLine($"/{cmd} rs --重置数据");
+        }
         SendMess(plr, sb.ToString());
     }
     #endregion
@@ -83,7 +86,7 @@ internal class MyCmd
             {
                 case "t" when InGame(plr) && IsAdmin(plr):
                 case "tile" when InGame(plr) && IsAdmin(plr):
-                    HandleTileOp(args, plr); // 范围操作图格指令
+                    TileOp(args, plr); // 范围操作图格指令
                     break;
 
                 case "fix" when InGame(plr):
@@ -91,7 +94,7 @@ internal class MyCmd
                     HandleFix(args, plr);  // 从快照修复图格命令
                     break;
 
-                case "bk":  
+                case "bk":
                 case "back":
                 case "撤销":
                     UndoCmd(plr);  // 图格撤销指令
@@ -420,7 +423,6 @@ internal class MyCmd
         }
 
         string input = args.Parameters[1];
-        TileData? clip = null;
         string buildName = "";
 
         // 尝试按索引解析
@@ -434,105 +436,30 @@ internal class MyCmd
             }
 
             buildName = names[idx - 1];
-            clip = LoadClip(buildName); // 根据名称加载建筑数据
         }
         else
         {
             buildName = input;
-            clip = LoadClip(buildName); // 直接按名称加载
         }
 
-        if (clip == null)
+        // 验证建筑存在及权限
+        if (!File.Exists(GetClipPath(buildName)))
         {
-            SendMess(plr, $"未找到建筑 '{input}'");
+            SendMess(plr, $"未找到建筑 '{buildName}'");
             return;
         }
 
-        // 检查管理专用建筑
         if (Config.AdminBuilding.Contains(buildName) && !IsAdmin(plr))
         {
             SendMess(plr, $"建筑 '{buildName}' 为管理专用，您无权使用");
             return;
         }
 
-        // 获取建筑尺寸
-        int w = clip.Tiles?.GetLength(0) ?? 0;
-        int h = clip.Tiles?.GetLength(1) ?? 0;
-        if (w == 0 || h == 0)
-        {
-            SendMess(plr, "建筑数据无效");
-            return;
-        }
-
-        // 计算粘贴位置：玩家头顶（y 偏移为 -h，x 居中）
-        int px = plr.TileX;
-        int py = plr.TileY;
-        int startX = px - w / 2;
-        int startY = py - h; // 头顶模式，建筑底部对齐玩家脚下？实际上是玩家坐标的 y 减去高度，即建筑顶部对齐玩家头顶？
-
-        // 检查是否超出世界边界
-        if (startX < 0 || startX + w >= Main.maxTilesX || startY < 0 || startY + h >= Main.maxTilesY)
-        {
-            SendMess(plr, "目标区域超出世界边界");
-            return;
-        }
-
-        Rectangle rect = new Rectangle(startX, startY, w, h);
-
-        #region 自动创建区域
-        string regName = $"{plr.Name}_{DateTime.Now:yyyyMMddHHmmss}";
-        if (Config.CreateRegion)
-        {
-            // 生成唯一区域名
-            if (!TShock.Regions.AddRegion(rect.X, rect.Y, rect.Width, rect.Height, regName, plr.Name, Main.worldID.ToString()))
-            {
-                SendMess(plr, "自动创建区域失败，粘贴已取消");
-                return;
-            }
-            // 设置禁止建筑
-            TShock.Regions.SetRegionState(regName, true);
-            // 记录到配置，便于重置时清理
-            if (!Config.CreatedReg.Contains(regName))
-            {
-                Config.CreatedReg.Add(regName);
-                Config.Write();
-            }
-        }
-        #endregion
-
-        // 保存粘贴前的区域状态以便撤销
-        var before = GetTileData(rect);
-        var stack = LoadUndo(plr.Name);
-        stack.Push(new UndoOperation
-        {
-            RegionName = regName,
-            Area = rect,
-            BeforeState = before,
-            Timestamp = DateTime.Now,
-        });
-        SaveUndo(plr.Name, stack);
-
-        // 将建筑数据偏移到目标坐标
-        TileData? data = CloneOff(clip, startX, startY);
-
-        int count = 0;
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        // 异步执行粘贴操作，避免阻塞主线程
-        Task.Run(() =>
-        {
-            // 先清除目标区域内的所有箱子、实体、标牌
-            KillAll(startX, startX + w - 1, startY, startY + h - 1);
-            count = FixTile(rect, data, count); // 粘贴图格
-        }).ContinueWith(_ =>
-        {
-            FixItem(data, plr); // 粘贴箱子、实体、标牌
-            sw.Stop();
-            AnimMag.Add(rect);            // 新增：显示区域动画
-            SendMess(plr, $"粘贴 {input} 完成！已创造: {count} 个图格," +
-                          $"用时 {sw.ElapsedMilliseconds} ms\n" +
-                          $"撤销操作:/{cmd} bk");
-        });
+        // 进入粘贴等待模式
+        var data = GetData(plr.Name);
+        data.rwPaste = buildName;
+        SendMess(plr, $"粘贴建筑 '{buildName}' 请使用 [i:{ItemID.WireKite}] 框选目标区域");
+        SendMess(plr, $"只点1下为建筑中心,否则以起点决定建筑延伸");
     }
 
     /// <summary>
