@@ -225,50 +225,75 @@ public static class WorldTile
             return;
         }
 
-        Rectangle pRect;
+        Rectangle rect;
 
-        // 如果起点与终点相同，则以该点为中心放置建筑
+        // 单点：起点=终点 → 居中
         if (startX == endX && startY == endY)
         {
-            int centerX = startX;
-            int centerY = startY;
-            int baseX = centerX - w / 2;
-            int baseY = centerY - h / 2;
-            pRect = new Rectangle(baseX, baseY, w, h);
+            int baseX = startX - w / 2;
+            int baseY = startY - h / 2;
+            rect = new Rectangle(baseX, baseY, w, h);
+            SendMess(plr, "模式：中心点");
+        }
+        // 垂直线：X相同，Y不同
+        else if (startX == endX && startY != endY)
+        {
+            // 水平居中
+            int baseX = startX - w / 2;
+            int baseY;
+            if (startY < endY) // 从上往下拉 → 建筑顶部对齐起点（中上）
+                baseY = startY;
+            else               // 从下往上拉 → 建筑底部对齐起点（中下）
+                baseY = startY - h + 1;
+            rect = new Rectangle(baseX, baseY, w, h);
+            SendMess(plr, "模式：垂直线（居中）");
+        }
+        // 水平线：Y相同，X不同
+        else if (startY == endY && startX != endX)
+        {
+            // 垂直居中
+            int baseY = startY - h / 2;
+            int baseX;
+            if (startX < endX) // 从左往右拉 → 建筑左侧对齐起点
+                baseX = startX;
+            else               // 从右往左拉 → 建筑右侧对齐起点
+                baseX = startX - w + 1;
+            rect = new Rectangle(baseX, baseY, w, h);
+            SendMess(plr, "模式：水平线（居中）");
         }
         else
         {
-            // 计算方向
-            bool rightDir = endX > startX;   // 终点在起点的右边
-            bool downDir = endY > startY;    // 终点在起点的下边
-
+            // 矩形框选：四角对齐逻辑
+            bool rightDir = endX > startX;
+            bool downDir = endY > startY;
             int baseX, baseY;
-            if (rightDir && downDir)        // 起点左上 -> 终点右下：建筑左上角对齐起点
+            if (rightDir && downDir)        // 起点左上
             {
                 baseX = startX;
                 baseY = startY;
             }
-            else if (!rightDir && downDir)  // 起点右上 -> 终点左下：建筑右上角对齐起点
+            else if (!rightDir && downDir)  // 起点右上
             {
                 baseX = startX - w + 1;
                 baseY = startY;
             }
-            else if (rightDir && !downDir)  // 起点左下 -> 终点右上：建筑左下角对齐起点
+            else if (rightDir && !downDir)  // 起点左下
             {
                 baseX = startX;
                 baseY = startY - h + 1;
             }
-            else // (!rightDir && !downDir) // 起点右下 -> 终点左上：建筑右下角对齐起点
+            else
             {
-                baseX = startX - w + 1;
+                baseX = startX - w + 1;     // 起点右下
                 baseY = startY - h + 1;
             }
-            pRect = new Rectangle(baseX, baseY, w, h);
+            rect = new Rectangle(baseX, baseY, w, h);
+            SendMess(plr, "模式：斜角对齐");
         }
 
         // 边界检查
-        if (pRect.X < 0 || pRect.X + w >= Main.maxTilesX ||
-            pRect.Y < 0 || pRect.Y + h >= Main.maxTilesY)
+        if (rect.X < 0 || rect.X + w >= Main.maxTilesX ||
+            rect.Y < 0 || rect.Y + h >= Main.maxTilesY)
         {
             SendMess(plr, "建筑超出世界边界，已取消粘贴");
             e.Handled = true;
@@ -276,20 +301,20 @@ public static class WorldTile
         }
 
         // 检查是否与现有区域相交（只检查，不删除）
-        if (TShock.Regions.Regions.Any(r => r.Area.Intersects(pRect)))
+        if (TShock.Regions.Regions.Any(r => r.Area.Intersects(rect)))
         {
             SendMess(plr, "粘贴区域与其他区域重叠，已取消");
             e.Handled = true;
             return;
         }
 
-        SendMess(plr, $"正在粘贴建筑 '{buildName}' 到矩形区域 ({pRect.X},{pRect.Y}) 尺寸 {w}x{h}");
+        SendMess(plr, $"正在粘贴建筑 '{buildName}' 到矩形区域 ({rect.X},{rect.Y}) 尺寸 {w}x{h}");
 
         // 自动创建区域
         string regName = $"{plr.Name}_{DateTime.Now:yyyyMMddHHmmss}";
         if (Config.CreateRegion)
         {
-            if (!TShock.Regions.AddRegion(pRect.X, pRect.Y, w, h, regName, plr.Name, Main.worldID.ToString()))
+            if (!TShock.Regions.AddRegion(rect.X, rect.Y, w, h, regName, plr.Name, Main.worldID.ToString()))
             {
                 SendMess(plr, "自动创建区域失败，粘贴已取消");
                 e.Handled = true;
@@ -304,32 +329,32 @@ public static class WorldTile
         }
 
         // 保存撤销状态
-        var beforeState = GetTileData(pRect);
+        var beforeState = GetTileData(rect);
         var stack = LoadUndo(plr.Name);
         stack.Push(new UndoOperation
         {
             RegionName = regName,
-            Area = pRect,
+            Area = rect,
             BeforeState = beforeState,
             Timestamp = DateTime.Now
         });
         SaveUndo(plr.Name, stack);
 
-        // 偏移建筑数据到 pRect 左上角
-        var data = CloneOff(clip, pRect.X, pRect.Y);
+        // 偏移建筑数据到 rect 左上角
+        var data = CloneOff(clip, rect.X, rect.Y);
 
         int count = 0;
         var sw = Stopwatch.StartNew();
 
         Task.Run(() =>
         {
-            KillAll(pRect.Left, pRect.Right - 1, pRect.Top, pRect.Bottom - 1);
-            count = FixTile(pRect, data, count);
+            KillAll(rect.Left, rect.Right - 1, rect.Top, rect.Bottom - 1);
+            count = FixTile(rect, data, count);
         }).ContinueWith(_ =>
         {
             FixItem(data, plr);
             sw.Stop();
-            AnimMag.Add(pRect);
+            AnimMag.Add(rect);
             SendMess(plr, $"粘贴 '{buildName}' 完成！已粘贴 {count} 个图格，" +
                           $"用时 {sw.ElapsedMilliseconds} ms\n" +
                           $"撤销操作：/{MyCmd.cmd} bk");
