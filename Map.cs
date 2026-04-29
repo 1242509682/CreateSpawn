@@ -1,752 +1,755 @@
 ﻿using System.IO.Compression;
+using System.Text;
 using Microsoft.Xna.Framework;
-using Terraria.GameContent.Tile_Entities;
-using Terraria;
-using TShockAPI;
-using static CreateSpawn.CreateSpawn;
 using Newtonsoft.Json;
+using Terraria;
+using Terraria.DataStructures;
+using Terraria.ID;
+using Terraria.Utilities;
+using TShockAPI;
+using static CreateSpawn.Map;
+using static CreateSpawn.Plugin;
+using static CreateSpawn.Utils;
+using static CreateSpawn.WorldTile;
 
 namespace CreateSpawn;
-
-public class Map
+internal class Map
 {
-    //存储图格数据的目录
-    internal static readonly string Paths = Path.Combine(TShock.SavePath, "CreateSpawn");
-
-    #region GZip 压缩辅助方法
-    private static Stream GZipWrite(string filePath)
+    #region 内部数据结构
+    // 内部类 TileData：用于封装一个区域内的所有图格、箱子、实体和标牌数据
+    public class TileData
     {
-        var fileStream = new FileStream(filePath, FileMode.Create);
-        return new GZipStream(fileStream, CompressionLevel.Optimal);
+        public Tile[,]? Tiles; // 图格二维数组，[x,y] 对应区域内的图格
+        public List<Chest>? Chests; // 箱子列表
+        public List<EntityData>? EntData; // 实体列表（如训练假人、物品框等）
+        public List<Sign>? Signs; // 标牌列表
     }
 
-    private static Stream GZipRead(string filePath)
+    // 内部类 EntityData：用于存储实体的必要信息
+    public class EntityData
     {
-        var fileStream = new FileStream(filePath, FileMode.Open);
-        return new GZipStream(fileStream, CompressionMode.Decompress);
-    }
-    #endregion
-
-    #region 操作栈管理
-    public static void SaveOperation(string playerName, BuildOperation operation)
-    {
-        string path = Path.Combine(Map.Paths, $"{playerName}_bk.map");
-        var stack = LoadOperations(playerName);
-        stack.Push(operation);
-
-        // 使用 GZip 压缩保存
-        using (var fs = GZipWrite(path))
-        using (var writer = new BinaryWriter(fs))
-        {
-            writer.Write(stack.Count);
-            foreach (var op in stack)
-            {
-                writer.Write(op.CreatedRegion ?? "");
-                writer.Write(op.Timestamp.Ticks);
-                writer.Write(op.Area.X);
-                writer.Write(op.Area.Y);
-                writer.Write(op.Area.Width);
-                writer.Write(op.Area.Height);
-                SaveBuilding(writer, op.BeforeState);
-            }
-        }
+        public byte Type; // 实体类型（例如 0=训练假人，1=物品框等）
+        public short X, Y; // 实体在世界中的坐标
+        public byte[]? ExtraData; // 实体的额外二进制数据（用于序列化/反序列化）
     }
 
-    public static Stack<BuildOperation> LoadOperations(string name)
+    // 内部类 UndoOperation：撤销操作记录，保存操作前后的区域状态
+    public class UndoOperation
     {
-        string path = Path.Combine(Map.Paths, $"{name}_bk.map");
-        if (!File.Exists(path))
-            return new Stack<BuildOperation>();
-
-        var operations = new List<BuildOperation>();
-        using (var fs = GZipRead(path))
-        using (var reader = new BinaryReader(fs))
-        {
-            int count = reader.ReadInt32();
-            for (int i = 0; i < count; i++)
-            {
-                operations.Add(LoadBuildOperation(reader));
-            }
-        }
-
-        // 反转列表，确保最新操作在栈顶
-        operations.Reverse();
-        return new Stack<BuildOperation>(operations);
-    }
-
-    #region 查找指定区域对应归属者的操作记录
-    public static BuildOperation FindOperation(string regionName, string ownerName)
-    {
-        try
-        {
-            var operations = LoadOperations(ownerName);
-            if (operations.Count == 0)
-            {
-                TShock.Log.ConsoleError($"[复制建筑] 玩家 {ownerName} 没有操作记录");
-                return null;
-            }
-
-            // 直接在栈中查找，不进行弹出操作
-            var op = operations.FirstOrDefault(op => op.CreatedRegion == regionName);
-
-            if (op != null)
-            {
-                return op;
-            }
-            else
-            {
-                TShock.Log.ConsoleError($"[复制建筑] 在玩家 {ownerName} 的操作记录中未找到区域 {regionName}");
-                return null;
-            }
-        }
-        catch (Exception ex)
-        {
-            TShock.Log.ConsoleError($"[复制建筑] 查找区域 {regionName} 的操作记录时出错: {ex}");
-            return null;
-        }
+        public string RegionName { get; set; } = string.Empty; // TShock区域名称
+        public Rectangle Area { get; set; } // 操作影响的矩形区域
+        public TileData BeforeState { get; set; } = new(); // 操作前的区域数据
+        public DateTime Timestamp { get; set; } // 操作时间戳，用于排序或清理旧记录
     }
     #endregion
 
-    public static BuildOperation PopOperation(string name)
+    #region 撤销栈操作
+    /// <summary>
+    /// 将玩家的撤销栈保存到文件（GZip 压缩）
+    /// </summary>
+    public static void SaveUndo(string playerName, Stack<UndoOperation> stack)
     {
-        var stack = LoadOperations(name);
+        if (!Directory.Exists(RestoreDir)) Directory.CreateDirectory(RestoreDir);
+        string path = Path.Combine(RestoreDir, $"{playerName}_undo.bak");
+        using var fs = new FileStream(path, FileMode.Create);
+        using var gz = new GZipStream(fs, CompressionLevel.Optimal);
+        using var writer = new BinaryWriter(gz);
+        writer.Write(stack.Count); // 写入栈大小
+        foreach (var op in stack)
+        {
+            writer.Write(op.RegionName ?? "");
+            writer.Write(op.Area.X);
+            writer.Write(op.Area.Y);
+            writer.Write(op.Area.Width);
+            writer.Write(op.Area.Height);
+            writer.Write(op.Timestamp.Ticks);
+            WriteTileData(writer, op.BeforeState);
+        }
+    }
+
+    /// <summary>
+    /// 从文件加载玩家的撤销栈
+    /// </summary>
+    public static Stack<UndoOperation> LoadUndo(string playerName)
+    {
+        string path = Path.Combine(RestoreDir, $"{playerName}_undo.bak");
+        if (!File.Exists(path)) return new Stack<UndoOperation>();
+        using var stream = new GZipStream(new FileStream(path, FileMode.Open), CompressionMode.Decompress);
+        using var reader = new BinaryReader(stream);
+        int count = reader.ReadInt32();
+        var list = new List<UndoOperation>(count);
+        for (int i = 0; i < count; i++) list.Add(ReadUndoOp(reader));
+        list.Reverse(); // 因为栈是后进先出，从文件读出的顺序是栈底到栈顶，反转后便于 Push/Pop
+        return new Stack<UndoOperation>(list);
+    }
+
+    /// <summary>
+    /// 从 BinaryReader 读取一个 UndoOperation 对象
+    /// </summary>
+    public static UndoOperation ReadUndoOp(BinaryReader reader)
+    {
+        return new UndoOperation
+        {
+            RegionName = reader.ReadString(),
+            Area = new Rectangle(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32()),
+            Timestamp = new DateTime(reader.ReadInt64()),
+            BeforeState = ReadTileData(reader)
+        };
+    }
+
+    /// <summary>
+    /// 从玩家的撤销栈弹出一个操作（从文件加载后删除）
+    /// </summary>
+    public static UndoOperation? PopUndo(string playerName)
+    {
+        var stack = LoadUndo(playerName);
         if (stack.Count == 0) return null;
-
-        var operation = stack.Pop();
-        string path = Path.Combine(Paths, $"{name}_bk.map");
-        using (var fs = GZipWrite(path))
-        using (var writer = new BinaryWriter(fs))
-        {
-            writer.Write(stack.Count);
-            foreach (var op in stack)
-            {
-                writer.Write(op.CreatedRegion ?? "");
-                writer.Write(op.Timestamp.Ticks);
-                writer.Write(op.Area.X);
-                writer.Write(op.Area.Y);
-                writer.Write(op.Area.Width);
-                writer.Write(op.Area.Height);
-                SaveBuilding(writer, op.BeforeState);
-            }
-        }
-        return operation;
-    }
-
-    private static BuildOperation LoadBuildOperation(BinaryReader reader)
-    {
-        var operation = new BuildOperation();
-
-        // 读取基本属性
-        operation.CreatedRegion = reader.ReadString();
-        operation.Timestamp = new DateTime(reader.ReadInt64());
-        int areaX = reader.ReadInt32();
-        int areaY = reader.ReadInt32();
-        int areaWidth = reader.ReadInt32();
-        int areaHeight = reader.ReadInt32();
-        operation.Area = new Rectangle(areaX, areaY, areaWidth, areaHeight);
-
-        // 读取 BeforeState (Building 对象)
-        operation.BeforeState = LoadBuilding(reader);
-
-        return operation;
+        var op = stack.Pop();
+        SaveUndo(playerName, stack);
+        return op;
     }
     #endregion
 
-    #region 读取剪贴板方法
-    internal static Building LoadClip(string name)
+    #region 从文件读取建筑
+    /// <summary>
+    /// 从建筑文件加载 TileData
+    /// </summary>
+    public static TileData? LoadClip(string name)
     {
-        string filePath = Path.Combine(Paths, $"{name}_cp.map");
-        if (!File.Exists(filePath)) return null!;
-
-        using (var fs = GZipRead(filePath))
-        using (var reader = new BinaryReader(fs))
-        {
-            return LoadBuilding(reader);
-        }
+        string path = GetClipPath(name);
+        if (!File.Exists(path)) return null;
+        using var baseStream = new GZipStream(new FileStream(path, FileMode.Open), CompressionMode.Decompress);
+        using var reader = new BinaryReader(baseStream);
+        return ReadTileData(reader);
     }
     #endregion
 
-    #region 保存剪贴板方法
-    internal static void SaveClip(string name, Building building)
+    #region 标牌序列化辅助
+    /// <summary>
+    /// 将标牌列表保存为 GZip 压缩的 JSON 文件
+    /// </summary>
+    public static void SaveSigns(string path, List<Sign> signs)
     {
-        Directory.CreateDirectory(Paths);
-        string filePath = Path.Combine(Paths, $"{name}_cp.map");
+        string json = JsonConvert.SerializeObject(signs, Formatting.None);
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        using var fs = new FileStream(path, FileMode.Create);
+        using var gz = new GZipStream(fs, CompressionLevel.Optimal);
+        gz.Write(bytes, 0, bytes.Length);
+    }
 
-        using (var fs = GZipWrite(filePath))
-        using (var writer = new BinaryWriter(fs))
-        {
-            SaveBuilding(writer, building);
-        }
+    /// <summary>
+    /// 从 GZip 压缩的 JSON 文件加载标牌列表
+    /// </summary>
+    public static List<Sign> LoadSigns(string path)
+    {
+        using var stream = new GZipStream(new FileStream(path, FileMode.Open), CompressionMode.Decompress);
+        using var sr = new StreamReader(stream);
+        string json = sr.ReadToEnd();
+        return JsonConvert.DeserializeObject<List<Sign>>(json) ?? new List<Sign>();
     }
     #endregion
 
-    #region 把建筑写入到内存方法
-    private static void SaveBuilding(BinaryWriter writer, Building clip)
+    #region 克隆方法
+    /// <summary>
+    /// 深拷贝箱子，并可选择偏移坐标
+    /// </summary>
+    public static Chest CloneChest(Chest src, int offX = 0, int offY = 0)
     {
-        // 保存区域名称
-        writer.Write(clip.RegionName ?? "");
-        writer.Write(clip.Origin.X);
-        writer.Write(clip.Origin.Y);
-        writer.Write(clip.Width);
-        writer.Write(clip.Height);
-
-        if (clip.Tiles == null) return;
-
-        #region 写入图格
-        for (int x = 0; x < clip.Width; x++)
+        var chest = new Chest(0, src.x + offX, src.y + offY, src.bankChest, src.maxItems)
         {
-            for (int y = 0; y < clip.Height; y++)
-            {
-                var tile = clip.Tiles[x, y];
-                writer.Write(tile.bTileHeader);
-                writer.Write(tile.bTileHeader2);
-                writer.Write(tile.bTileHeader3);
-                writer.Write(tile.frameX);
-                writer.Write(tile.frameY);
-                writer.Write(tile.liquid);
-                writer.Write(tile.sTileHeader);
-                writer.Write(tile.type);
-                writer.Write(tile.wall);
-            }
-        }
-        #endregion
-
-        #region 写入进度条件
-        writer.Write(clip.Conditions?.Count ?? 0);
-        if (clip.Conditions != null)
-        {
-            foreach (var condition in clip.Conditions)
-            {
-                writer.Write(condition ?? "");
-            }
-        }
-        #endregion
-
-        #region 写入箱子物品
-        writer.Write(clip.ChestItems?.Count ?? 0);
-        if (clip.ChestItems != null)
-        {
-            foreach (var data in clip.ChestItems)
-            {
-                writer.Write(data.Position.X);
-                writer.Write(data.Position.Y);
-                writer.Write(data.Slot);
-                writer.Write(data.Item?.type ?? 0);
-                writer.Write(data.Item?.netID ?? 0);
-                writer.Write(data.Item?.stack ?? 0);
-                writer.Write(data.Item?.prefix ?? 0);
-            }
-        }
-        #endregion
-
-        #region 写入标牌信息
-        writer.Write(clip.Signs?.Count ?? 0);
-        if (clip.Signs != null)
-        {
-            foreach (var sign in clip.Signs)
-            {
-                writer.Write(sign.x - clip.Origin.X); // 相对坐标
-                writer.Write(sign.y - clip.Origin.Y);
-                writer.Write(sign.text ?? "");
-            }
-        }
-        #endregion
-
-        #region 写入物品框物品
-        writer.Write(clip.ItemFrames?.Count ?? 0);
-        if (clip.ItemFrames != null)
-        {
-            foreach (var data in clip.ItemFrames)
-            {
-                writer.Write(data.Position.X - clip.Origin.X); // 存储相对坐标
-                writer.Write(data.Position.Y - clip.Origin.Y);
-                writer.Write(data.Item.NetId);
-                writer.Write(data.Item.Stack);
-                writer.Write(data.Item.PrefixId);
-            }
-        }
-        #endregion
-
-        #region 写入武器架物品
-        writer.Write(clip.WeaponsRacks?.Count ?? 0);
-        if (clip.WeaponsRacks != null)
-        {
-            foreach (var data in clip.WeaponsRacks)
-            {
-                writer.Write(data.Position.X - clip.Origin.X);
-                writer.Write(data.Position.Y - clip.Origin.Y);
-                writer.Write(data.Item.NetId);
-                writer.Write(data.Item.Stack);
-                writer.Write(data.Item.PrefixId);
-            }
-        }
-        #endregion
-
-        #region 写入盘子物品
-        writer.Write(clip.FoodPlatters?.Count ?? 0);
-        if (clip.FoodPlatters != null)
-        {
-            foreach (var data in clip.FoodPlatters)
-            {
-                writer.Write(data.Position.X - clip.Origin.X);
-                writer.Write(data.Position.Y - clip.Origin.Y);
-                writer.Write(data.Item.NetId);
-                writer.Write(data.Item.Stack);
-                writer.Write(data.Item.PrefixId);
-            }
-        }
-        #endregion
-
-        #region 写入人偶物品
-        writer.Write(clip.DisplayDolls?.Count ?? 0);
-        if (clip.DisplayDolls != null)
-        {
-            foreach (var doll in clip.DisplayDolls)
-            {
-                // 保存相对坐标
-                writer.Write(doll.Position.X - clip.Origin.X);
-                writer.Write(doll.Position.Y - clip.Origin.Y);
-
-                // 保存物品数据 (8个槽位)
-                writer.Write(doll.Items.Length);
-                foreach (var item in doll.Items)
-                {
-                    writer.Write(item.NetId);
-                    writer.Write(item.Stack);
-                    writer.Write(item.PrefixId);
-                }
-
-                // 保存染料数据 (8个槽位)
-                writer.Write(doll.Dyes.Length);
-                foreach (var dye in doll.Dyes)
-                {
-                    writer.Write(dye.NetId);
-                    writer.Write(dye.Stack);
-                    writer.Write(dye.PrefixId);
-                }
-            }
-        }
-        #endregion
-
-        #region 写入衣帽架物品
-        writer.Write(clip.HatRacks?.Count ?? 0);
-        if (clip.HatRacks != null)
-        {
-            foreach (var Rack in clip.HatRacks)
-            {
-                // 保存相对坐标
-                writer.Write(Rack.Position.X - clip.Origin.X);
-                writer.Write(Rack.Position.Y - clip.Origin.Y);
-
-                // 保存物品数据 (2个槽位)
-                writer.Write(Rack.Items.Length);
-                foreach (var item in Rack.Items)
-                {
-                    writer.Write(item.NetId);
-                    writer.Write(item.Stack);
-                    writer.Write(item.PrefixId);
-                }
-
-                // 保存染料数据 (2个槽位)
-                writer.Write(Rack.Dyes.Length);
-                foreach (var dye in Rack.Dyes)
-                {
-                    writer.Write(dye.NetId);
-                    writer.Write(dye.Stack);
-                    writer.Write(dye.PrefixId);
-                }
-            }
-        }
-        #endregion
-
-        #region 写入逻辑感应器检查类型
-        writer.Write(clip.LogicSensors?.Count ?? 0);
-        if (clip.LogicSensors != null)
-        {
-            foreach (var data in clip.LogicSensors)
-            {
-                writer.Write(data.Position.X - clip.Origin.X);
-                writer.Write(data.Position.Y - clip.Origin.Y);
-                writer.Write((int)data.type);
-            }
-        }
-        #endregion
-
+            name = src.name ?? "",
+            item = new Item[src.maxItems]
+        };
+        for (int i = 0; i < src.maxItems; i++)
+            chest.item[i] = src.item[i]?.Clone() ?? new Item();
+        return chest;
     }
-    #endregion
 
-    #region 从内存加载建筑方法
-    private static Building LoadBuilding(BinaryReader reader)
+    /// <summary>
+    /// 从 TileEntity 创建 EntityData，并可选择偏移坐标
+    /// </summary>
+    public static EntityData CloneEntity(TileEntity src, int offX = 0, int offY = 0)
     {
-        // 读取区域名称
-        string regionName = reader.ReadString();
-        int originX = reader.ReadInt32();
-        int originY = reader.ReadInt32();
-        int width = reader.ReadInt32();
-        int height = reader.ReadInt32();
-
-        #region 读取图格物品数据
-        var tiles = new Terraria.Tile[width, height];
-        for (int x = 0; x < width; x++)
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        TileEntity.Write(bw, src);
+        return new EntityData
         {
-            for (int y = 0; y < height; y++)
-            {
-                var tile = new Terraria.Tile
-                {
-                    bTileHeader = reader.ReadByte(),
-                    bTileHeader2 = reader.ReadByte(),
-                    bTileHeader3 = reader.ReadByte(),
-                    frameX = reader.ReadInt16(),
-                    frameY = reader.ReadInt16(),
-                    liquid = reader.ReadByte(),
-                    sTileHeader = reader.ReadUInt16(),
-                    type = reader.ReadUInt16(),
-                    wall = reader.ReadUInt16()
-                };
-                tiles[x, y] = tile;
-            }
-        }
-        #endregion
+            Type = src.type,
+            X = (short)(src.Position.X + offX),
+            Y = (short)(src.Position.Y + offY),
+            ExtraData = ms.ToArray()
+        };
+    }
 
-        #region 读取进度条件
-        int conditionCount = reader.ReadInt32();
-        var conditions = new List<string>(conditionCount);
-        for (int i = 0; i < conditionCount; i++)
+    /// <summary>
+    /// 深拷贝标牌，并可选择偏移坐标
+    /// </summary>
+    public static Sign CloneSign(Sign src, int offX = 0, int offY = 0)
+    {
+        return new Sign
         {
-            conditions.Add(reader.ReadString());
-        }
-        #endregion
-
-        #region 读取箱子物品数据
-        int chestItemCount = reader.ReadInt32();
-        var chestItems = new List<ChestItems>(chestItemCount);
-        for (int i = 0; i < chestItemCount; i++)
-        {
-            int posX = reader.ReadInt32();
-            int posY = reader.ReadInt32();
-            int slot = reader.ReadInt32();
-            int type = reader.ReadInt32();
-            int netId = reader.ReadInt32();
-            int stack = reader.ReadInt32();
-            byte prefix = reader.ReadByte();
-
-            var item = new Item();
-            item.SetDefaults(type);
-            item.netID = netId;
-            item.stack = stack;
-            item.prefix = prefix;
-
-            chestItems.Add(new ChestItems
-            {
-                Position = new Point(posX, posY),
-                Slot = slot,
-                Item = item
-            });
-        }
-        #endregion
-
-        #region 读取标牌信息内容
-        int signCount = reader.ReadInt32();
-        var signs = new List<Sign>(signCount);
-        for (int i = 0; i < signCount; i++)
-        {
-            int relX = reader.ReadInt32();
-            int relY = reader.ReadInt32();
-            string text = reader.ReadString();
-
-            signs.Add(new Sign
-            {
-                x = originX + relX,
-                y = originY + relY,
-                text = text
-            });
-        }
-        #endregion
-
-        #region 读取物品框物品数据
-        int itemFrameCount = reader.ReadInt32();
-        var itemFrames = new List<ItemFrames>(itemFrameCount);
-        for (int i = 0; i < itemFrameCount; i++)
-        {
-            int relX = reader.ReadInt32();
-            int relY = reader.ReadInt32();
-            int netId = reader.ReadInt32();
-            int stack = reader.ReadInt32();
-            byte prefix = reader.ReadByte();
-
-            itemFrames.Add(new ItemFrames
-            {
-                Position = new Point(originX + relX, originY + relY),
-                Item = new NetItem(netId, stack, prefix)
-            });
-        }
-        #endregion
-
-        #region 读取武器架物品数据
-        int weaponRackCount = reader.ReadInt32();
-        var weaponRacks = new List<WRacks>(weaponRackCount);
-        for (int i = 0; i < weaponRackCount; i++)
-        {
-            int relX = reader.ReadInt32();
-            int relY = reader.ReadInt32();
-            int netId = reader.ReadInt32();
-            int stack = reader.ReadInt32();
-            byte prefix = reader.ReadByte();
-
-            weaponRacks.Add(new WRacks
-            {
-                Position = new Point(originX + relX, originY + relY),
-                Item = new NetItem(netId, stack, prefix)
-            });
-        }
-        #endregion
-
-        #region 读取盘子物品数据
-        int foodPlatterCount = reader.ReadInt32();
-        var foodPlatters = new List<FPlatters>(foodPlatterCount);
-        for (int i = 0; i < foodPlatterCount; i++)
-        {
-            int relX = reader.ReadInt32();
-            int relY = reader.ReadInt32();
-            int netId = reader.ReadInt32();
-            int stack = reader.ReadInt32();
-            byte prefix = reader.ReadByte();
-
-            foodPlatters.Add(new FPlatters
-            {
-                Position = new Point(originX + relX, originY + relY),
-                Item = new NetItem(netId, stack, prefix)
-            });
-        }
-        #endregion
-
-        #region 读取人偶物品数据
-        int dollCount = reader.ReadInt32();
-        var displayDolls = new List<DDolls>(dollCount);
-        for (int i = 0; i < dollCount; i++)
-        {
-            int relX = reader.ReadInt32();
-            int relY = reader.ReadInt32();
-
-            // 读取物品
-            int itemCount = reader.ReadInt32();
-            var items = new NetItem[itemCount];
-            for (int j = 0; j < itemCount; j++)
-            {
-                items[j] = new NetItem(
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
-                    reader.ReadByte()
-                );
-            }
-
-            // 读取染料
-            int dyeCount = reader.ReadInt32();
-            var dyes = new NetItem[dyeCount];
-            for (int j = 0; j < dyeCount; j++)
-            {
-                dyes[j] = new NetItem(
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
-                    reader.ReadByte()
-                );
-            }
-
-            displayDolls.Add(new DDolls
-            {
-                Position = new Point(originX + relX, originY + relY),
-                Items = items,
-                Dyes = dyes
-            });
-        }
-        #endregion
-
-        #region 读取衣帽架物品数据
-        int RackCount = reader.ReadInt32();
-        var hatRacks = new List<HatRacks>(RackCount);
-        for (int i = 0; i < RackCount; i++)
-        {
-            int relX = reader.ReadInt32();
-            int relY = reader.ReadInt32();
-
-            // 读取物品
-            int itemCount = reader.ReadInt32();
-            var items = new NetItem[itemCount];
-            for (int j = 0; j < itemCount; j++)
-            {
-                items[j] = new NetItem(
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
-                    reader.ReadByte()
-                );
-            }
-
-            // 读取染料
-            int dyeCount = reader.ReadInt32();
-            var dyes = new NetItem[dyeCount];
-            for (int j = 0; j < dyeCount; j++)
-            {
-                dyes[j] = new NetItem(
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
-                    reader.ReadByte()
-                );
-            }
-
-            hatRacks.Add(new HatRacks
-            {
-                Position = new Point(originX + relX, originY + relY),
-                Items = items,
-                Dyes = dyes
-            });
-        }
-        #endregion
-
-        #region 读取逻辑灯开关数据
-        int LogicSensorsCount = reader.ReadInt32();
-        var logicSensors = new List<LogicSensors>(LogicSensorsCount);
-        for (int i = 0; i < LogicSensorsCount; i++)
-        {
-            int relX = reader.ReadInt32();
-            int relY = reader.ReadInt32();
-            int type = reader.ReadInt32();
-
-            logicSensors.Add(new LogicSensors
-            {
-                Position = new Point(originX + relX, originY + relY),
-                type = (TELogicSensor.LogicCheckType)type
-            });
-        }
-        #endregion
-
-        return new Building
-        {
-            RegionName = regionName,
-            Conditions = conditions, // 新增
-            Origin = new Point(originX, originY),
-            Width = width,
-            Height = height,
-            Tiles = tiles,
-            ChestItems = chestItems,
-            Signs = signs,
-            ItemFrames = itemFrames,
-            WeaponsRacks = weaponRacks,
-            FoodPlatters = foodPlatters,
-            DisplayDolls = displayDolls,
-            HatRacks = hatRacks,
-            LogicSensors = logicSensors
+            x = src.x + offX,
+            y = src.y + offY,
+            text = src.text
         };
     }
     #endregion
 
-    #region 获取所有已存在的剪贴板名称
-    public static List<string> GetAllClipNames()
+    #region 保存建筑到文件
+    /// <summary>
+    /// 将指定矩形区域的图格、箱子、实体、标牌保存为建筑文件（相对坐标）
+    /// </summary>
+    public static void SaveBuild(TSPlayer plr, string name, Rectangle rect)
     {
-        if (!Directory.Exists(Map.Paths))
-            return new List<string>();
+        var clip = GetTileData(rect); // 获取世界区域数据（绝对坐标）
 
-        return Directory.GetFiles(Map.Paths, "*_cp.map")
-                        .Select(f => Path.GetFileNameWithoutExtension(f).Replace("_cp", ""))
-                        .ToList();
+        // 转换为相对坐标（相对于矩形左上角）直接调用 CloneOff 传入负偏移
+        var relClip = CloneOff(clip, -rect.X, -rect.Y);
+
+        string path = GetClipPath(name);
+        using var fs = new FileStream(path, FileMode.Create);
+        using var gz = new GZipStream(fs, CompressionLevel.Optimal);
+        using var writer = new BinaryWriter(gz);
+        WriteTileData(writer, relClip);
+
+        plr.SendMessage($"已保存建筑 '{name}' ({rect.Width}x{rect.Height})", color);
+        // 清除玩家的区域点标记（来自 TShock 的 TempPoints）
+        plr.TempPoints[0] = Point.Zero;
+        plr.TempPoints[1] = Point.Zero;
     }
     #endregion
 
-    #region 备份并压缩所有 .dat 文件后删除（排除出生点）
-    public static void BackupAndDeleteAllDataFiles()
+    #region 保存世界快照（自动备份调用）
+    /// <summary>
+    /// 保存当前世界的快照（图格和标牌）到指定目录，用于自动备份
+    /// </summary>
+    public static void SaveSnapshot(TSPlayer plr, bool showMag, string worldName, string SaveDir)
     {
-        if (!Directory.Exists(Map.Paths)) return;
+        string tmpPath = Path.GetTempFileName(); // 临时文件
+        TileSnapshot.Create();    // 创建世界快照
+        TileSnapshot.Save(tmpPath); // 保存到临时文件
+        TileSnapshot.Clear();      // 清理快照
 
-        // 构建压缩包保存路径
-        string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        string backupFolder = Path.Combine(Map.Paths, $"{timestamp}");
-        string zipFilePath = Path.Combine(Map.Paths, $"{timestamp}.zip");
-
-        try
+        string snapPath = Path.Combine(SaveDir, $"{worldName}{TwsExt}");
+        using (var fs = new FileStream(snapPath, FileMode.Create))
+        using (var gz = new GZipStream(fs, CompressionLevel.Optimal))
+        using (var tmpFs = File.OpenRead(tmpPath))
         {
-            // 创建临时备份文件夹
-            Directory.CreateDirectory(backupFolder);
-            // 获取所有 .map 文件，排除配置列表中指定的建筑
-            var filesToBackup = Directory.GetFiles(Map.Paths, "*_cp.map")
-                .Where(file => !Config.IgnoreList.Any(excluded =>
-                 Path.GetFileNameWithoutExtension(file).Equals($"{excluded}_cp", StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-
-            if (filesToBackup.Count == 0)
-            {
-                TShock.Log.ConsoleInfo("没有需要备份的建筑文件");
-                Directory.Delete(backupFolder, recursive: true);
-                return;
-            }
-
-            // 将所有符合条件的文件复制到备份文件夹
-            foreach (var file in filesToBackup)
-            {
-                string destFile = Path.Combine(backupFolder, Path.GetFileName(file));
-                File.Copy(file, destFile, overwrite: true);
-            }
-
-            // 压缩文件夹为 .zip
-            ZipFile.CreateFromDirectory(backupFolder, zipFilePath, CompressionLevel.SmallestSize, false);
-
-            // 删除临时文件夹
-            Directory.Delete(backupFolder, recursive: true);
-
-            TShock.Utils.Broadcast($"已成功备份 {filesToBackup.Count} 个建筑文件（排除 {Config.IgnoreList.Count} 个），压缩包保存于:\n {zipFilePath}", 250, 240, 150);
-
-            // 删除原始文件（排除出生点）
-            int DelCount = 0;
-            foreach (var file in filesToBackup)
-            {
-                try
-                {
-                    File.Delete(file);
-                    DelCount++;
-                }
-                catch (Exception ex)
-                {
-                    TShock.Log.ConsoleInfo($"删除文件失败: {file}, 错误: {ex.Message}");
-                }
-            }
-
-            TShock.Utils.Broadcast($"已成功删除 {DelCount} 个建筑文件（保留出生点文件）", 250, 240, 150);
-
-            // 显示被保留的建筑列表
-            if (Config.IgnoreList.Count > 0)
-            {
-                TShock.Utils.Broadcast($"保留的建筑: {string.Join(", ", Config.IgnoreList)}", 250,240,150);
-            }
+            tmpFs.CopyTo(gz); // 压缩临时文件到目标
         }
-        catch (Exception ex)
+        File.Delete(tmpPath);
+        if (showMag) plr.SendMessage($"已保存世界快照: {worldName}{TwsExt} (GZIP压缩)", color2);
+
+        // 保存标牌
+        string signPath = Path.Combine(SaveDir, $"{worldName}{SgnExt}");
+        var signs = new List<Sign>();
+        for (int i = 0; i < Main.sign.Length; i++)
         {
-            TShock.Log.ConsoleInfo($"备份和删除过程中出错: {ex.Message}");
+            var s = Main.sign[i];
+            if (s != null && !string.IsNullOrEmpty(s.text))
+                signs.Add(new Sign { x = s.x, y = s.y, text = s.text });
         }
+        SaveSigns(signPath, signs);
+        if (showMag) plr.SendMessage($"已保存标牌: {worldName}{SgnExt} (GZIP压缩)", color2);
     }
     #endregion
 
-    #region 删除建筑文件方法
-    public static bool DeleteBuildingFile(string buildingName)
+    #region TileData 序列化辅助
+    /// <summary>
+    /// 将 TileData 对象写入 BinaryWriter（用于保存到文件）
+    /// </summary>
+    public static void WriteTileData(BinaryWriter writer, TileData data)
     {
-        try
+        // 写入图格数组维度
+        if (data.Tiles == null) { writer.Write(0); writer.Write(0); }
+        else
         {
-            // 只删除建筑文件，不删除备份文件
-            string filePath = Path.Combine(Paths, $"{buildingName}_cp.map");
-
-            if (!File.Exists(filePath))
-            {
-                return false;
-            }
-
-            File.Delete(filePath);
-            return true;
+            int w = data.Tiles.GetLength(0);
+            int h = data.Tiles.GetLength(1);
+            writer.Write(w); writer.Write(h);
+            WriteTiles(writer, data.Tiles); // 压缩写入图格
         }
-        catch (Exception ex)
+
+        // 写入箱子
+        writer.Write(data.Chests?.Count ?? 0);
+        if (data.Chests != null)
         {
-            TShock.Log.ConsoleError($"[复制建筑] 删除建筑文件失败 {buildingName}: {ex.Message}");
-            return false;
+            foreach (var c in data.Chests)
+            {
+                writer.Write(c.x); writer.Write(c.y); writer.Write(c.name ?? ""); writer.Write(c.maxItems);
+                for (int i = 0; i < c.maxItems; i++)
+                {
+                    var item = c.item[i];
+                    writer.Write(item?.type ?? 0); writer.Write(item?.stack ?? 0); writer.Write(item?.prefix ?? (byte)0);
+                }
+            }
+        }
+
+        // 写入实体
+        writer.Write(data.EntData?.Count ?? 0);
+        if (data.EntData != null)
+        {
+            foreach (var e in data.EntData)
+            {
+                writer.Write(e.Type); writer.Write(e.X); writer.Write(e.Y);
+                writer.Write(e.ExtraData?.Length ?? 0);
+                if (e.ExtraData != null) writer.Write(e.ExtraData);
+            }
+        }
+
+        // 写入标牌
+        writer.Write(data.Signs?.Count ?? 0);
+        if (data.Signs != null)
+        {
+            foreach (var s in data.Signs)
+            {
+                writer.Write(s.x); writer.Write(s.y); writer.Write(s.text ?? "");
+            }
         }
     }
 
-    // 检查建筑文件是否存在
-    public static bool BuildingExists(string buildingName) => File.Exists(Path.Combine(Paths, $"{buildingName}_cp.map"));
+    /// <summary>
+    /// 从 BinaryReader 读取一个 TileData 对象
+    /// </summary>
+    private static TileData ReadTileData(BinaryReader reader)
+    {
+        var data = new TileData();
+        int w = reader.ReadInt32(); int h = reader.ReadInt32();
+        if (w > 0 && h > 0)
+        {
+            data.Tiles = new Tile[w, h];
+            ReadTiles(reader, data.Tiles, w, h); // 解压图格
+        }
+
+        int chestCount = reader.ReadInt32();
+        if (chestCount > 0)
+        {
+            data.Chests = new List<Chest>();
+            for (int i = 0; i < chestCount; i++)
+            {
+                int cx = reader.ReadInt32();
+                int cy = reader.ReadInt32();
+                string cname = reader.ReadString();
+                int max = reader.ReadInt32();
+                var chest = new Chest(0, cx, cy, false, max)
+                {
+                    name = cname,
+                    item = new Item[max]
+                };
+
+                for (int s = 0; s < max; s++)
+                {
+                    int type = reader.ReadInt32();
+                    int stack = reader.ReadInt32();
+                    byte prefix = reader.ReadByte();
+                    var item = new Item();
+                    item.SetDefaults(type);
+                    item.stack = stack;
+                    item.prefix = prefix;
+                    chest.item[s] = item;
+                }
+                data.Chests.Add(chest);
+            }
+        }
+
+        int entCount = reader.ReadInt32();
+        if (entCount > 0)
+        {
+            data.EntData = new List<EntityData>();
+            for (int i = 0; i < entCount; i++)
+            {
+                var ent = new EntityData
+                {
+                    Type = reader.ReadByte(),
+                    X = reader.ReadInt16(),
+                    Y = reader.ReadInt16()
+                };
+                int extraLen = reader.ReadInt32();
+                ent.ExtraData = reader.ReadBytes(extraLen);
+                data.EntData.Add(ent);
+            }
+        }
+
+        int signCount = reader.ReadInt32();
+        if (signCount > 0)
+        {
+            data.Signs = new List<Sign>();
+            for (int i = 0; i < signCount; i++)
+                data.Signs.Add(new Sign
+                {
+                    x = reader.ReadInt32(),
+                    y = reader.ReadInt32(),
+                    text = reader.ReadString()
+                });
+        }
+        return data;
+    }
+    #endregion
+
+    #region 压缩图格（使用RLE压缩写入图格二维数组）
+    /// <summary>
+    /// 使用RLE压缩写入图格二维数组,参考原版NetMessage.CompressTileBlock方法
+    /// </summary>
+    private static void WriteTiles(BinaryWriter writer, Tile[,] tiles)
+    {
+        int width = tiles.GetLength(0);
+        int height = tiles.GetLength(1);
+
+        short repeatCount = 0;          // 重复计数器（原版num4）
+        int dataIdx = 4;                 // 数据起始索引（原版num5）
+        int flagStartIdx = 3;            // 标志位起始索引（原版num6）
+        byte flags1 = 0;                 // 第一层标志（原版b）
+        byte[] buffer = new byte[16];    // 缓冲区
+
+        Tile? prevTile = null;             // 前一个图格
+
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+            {
+                Tile curTile = tiles[x, y];
+
+                // 如果当前图格与前一个相同且允许批量压缩，则增加计数并跳过
+                if (prevTile != null && curTile.isTheSameAs(prevTile) && TileID.Sets.AllowsSaveCompressionBatching[curTile.type])
+                {
+                    repeatCount++;
+                    continue;
+                }
+
+                // 处理前一个图格的重复计数
+                if (prevTile != null)
+                {
+                    if (repeatCount > 0)
+                    {
+                        buffer[dataIdx] = (byte)(repeatCount & 0xFF);
+                        dataIdx++;
+                        if (repeatCount > 255)
+                        {
+                            flags1 |= 0x80; // 设置高位标志
+                            buffer[dataIdx] = (byte)((repeatCount >> 8) & 0xFF);
+                            dataIdx++;
+                        }
+                        else
+                        {
+                            flags1 |= 0x40;
+                        }
+                    }
+
+                    // 写入前一个图格的数据（标志位+内容）
+                    buffer[flagStartIdx] = flags1;
+                    writer.Write(buffer, flagStartIdx, dataIdx - flagStartIdx);
+
+                    repeatCount = 0;
+                }
+
+                // 开始处理当前图格
+                dataIdx = 4;
+                byte flags1cur = 0, flags2cur = 0, flags3cur = 0, flags4cur = 0; // 对应原版b, b4, b3, b2
+
+                // 检查活动块
+                if (curTile.active())
+                {
+                    flags1cur |= 2;
+                    buffer[dataIdx] = (byte)curTile.type;
+                    dataIdx++;
+                    if (curTile.type > 255)
+                    {
+                        buffer[dataIdx] = (byte)(curTile.type >> 8);
+                        dataIdx++;
+                        flags1cur |= 0x20;
+                    }
+
+                    // 原版在这里会检查箱子/标牌/实体，直接跳过
+
+                    // 写入帧数据（如果图格重要）
+                    if (Main.tileFrameImportant[curTile.type])
+                    {
+                        buffer[dataIdx] = (byte)(curTile.frameX & 0xFF);
+                        dataIdx++;
+                        buffer[dataIdx] = (byte)((curTile.frameX >> 8) & 0xFF);
+                        dataIdx++;
+                        buffer[dataIdx] = (byte)(curTile.frameY & 0xFF);
+                        dataIdx++;
+                        buffer[dataIdx] = (byte)((curTile.frameY >> 8) & 0xFF);
+                        dataIdx++;
+                    }
+
+                    // 块颜色
+                    if (curTile.color() != 0)
+                    {
+                        flags3cur |= 8;
+                        buffer[dataIdx] = curTile.color();
+                        dataIdx++;
+                    }
+                }
+
+                // 墙体
+                if (curTile.wall != 0)
+                {
+                    flags1cur |= 4;
+                    buffer[dataIdx] = (byte)curTile.wall;
+                    dataIdx++;
+                    if (curTile.wallColor() != 0)
+                    {
+                        flags3cur |= 0x10;
+                        buffer[dataIdx] = curTile.wallColor();
+                        dataIdx++;
+                    }
+                }
+
+                // 液体
+                if (curTile.liquid != 0)
+                {
+                    if (!curTile.shimmer())
+                    {
+                        if (curTile.lava())
+                            flags1cur |= 0x10;
+                        else if (curTile.honey())
+                            flags1cur |= 0x18;
+                        else
+                            flags1cur |= 0x08;
+                    }
+                    else
+                    {
+                        flags3cur |= 0x80;
+                        flags1cur |= 0x08;
+                    }
+                    buffer[dataIdx] = curTile.liquid;
+                    dataIdx++;
+                }
+
+                // 电线
+                if (curTile.wire()) flags4cur |= 2;
+                if (curTile.wire2()) flags4cur |= 4;
+                if (curTile.wire3()) flags4cur |= 8;
+
+                // 半砖/斜坡
+                int slopeFlag = curTile.halfBrick() ? 16 : (curTile.slope() != 0 ? (curTile.slope() + 1) << 4 : 0);
+                flags4cur |= (byte)slopeFlag;
+
+                // 制动器
+                if (curTile.actuator()) flags3cur |= 2;
+                if (curTile.inActive()) flags3cur |= 4;
+                if (curTile.wire4()) flags3cur |= 0x20;
+
+                // 墙体类型大于255
+                if (curTile.wall > 255)
+                {
+                    buffer[dataIdx] = (byte)(curTile.wall >> 8);
+                    dataIdx++;
+                    flags3cur |= 0x40;
+                }
+
+                // 隐形/全亮
+                if (curTile.invisibleBlock()) flags2cur |= 2;
+                if (curTile.invisibleWall()) flags2cur |= 4;
+                if (curTile.fullbrightBlock()) flags2cur |= 8;
+                if (curTile.fullbrightWall()) flags2cur |= 0x10;
+
+                // 组装标志位链（从后往前）
+                flagStartIdx = 3;
+                if (flags2cur != 0)
+                {
+                    flags3cur |= 1; // 标记存在flags2
+                    buffer[flagStartIdx] = flags2cur;
+                    flagStartIdx--;
+                }
+                if (flags3cur != 0)
+                {
+                    flags4cur |= 1; // 标记存在flags3
+                    buffer[flagStartIdx] = flags3cur;
+                    flagStartIdx--;
+                }
+                if (flags4cur != 0)
+                {
+                    flags1cur |= 1; // 标记存在flags4
+                    buffer[flagStartIdx] = flags4cur;
+                    flagStartIdx--;
+                }
+                // 将flags1放入最终位置
+                buffer[flagStartIdx] = flags1cur;
+
+                prevTile = curTile;
+                flags1 = flags1cur; // 保存用于后续重复计数写入
+            }
+
+
+        // 处理最后一组
+        if (prevTile != null)
+        {
+            if (repeatCount > 0)
+            {
+                buffer[dataIdx] = (byte)(repeatCount & 0xFF);
+                dataIdx++;
+                if (repeatCount > 255)
+                {
+                    flags1 |= 0x80;
+                    buffer[dataIdx] = (byte)((repeatCount >> 8) & 0xFF);
+                    dataIdx++;
+                }
+                else
+                {
+                    flags1 |= 0x40;
+                }
+            }
+
+            buffer[flagStartIdx] = flags1;
+            writer.Write(buffer, flagStartIdx, dataIdx - flagStartIdx);
+        }
+    }
+
+    /// <summary>
+    /// 解压缩图格到目标二维数组,参考原版NetMessage.DecompressTileBlock方法
+    /// </summary>
+    private static void ReadTiles(BinaryReader reader, Tile[,] tiles, int width, int height)
+    {
+        int repeat = 0;
+        Tile? prevTile = null;
+
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+            {
+                if (repeat > 0)
+                {
+                    // 重复前一个图格
+                    repeat--;
+                    if (tiles[x, y] == null)
+                        tiles[x, y] = new Tile(prevTile);
+                    else
+                        tiles[x, y].CopyFrom(prevTile);
+                    continue;
+                }
+
+                // 读取标志位
+                byte flags1 = reader.ReadByte();
+                bool hasFlags4 = (flags1 & 1) == 1;
+                byte flags4 = 0;
+                if (hasFlags4)
+                    flags4 = reader.ReadByte();
+
+                bool hasFlags3 = hasFlags4 && (flags4 & 1) == 1;
+                byte flags3 = 0;
+                if (hasFlags3)
+                    flags3 = reader.ReadByte();
+
+                bool hasFlags2 = hasFlags3 && (flags3 & 1) == 1;
+                byte flags2 = 0;
+                if (hasFlags2)
+                    flags2 = reader.ReadByte();
+
+                // 创建当前图格
+                Tile curTile = tiles[x, y];
+                if (curTile == null)
+                {
+                    curTile = new Tile();
+                    tiles[x, y] = curTile;
+                }
+                else
+                {
+                    curTile.ClearEverything();
+                }
+
+                // 解析活动块
+                if ((flags1 & 2) == 2)
+                {
+                    curTile.active(true);
+                    ushort type;
+                    if ((flags1 & 0x20) == 0x20)
+                    {
+                        byte low = reader.ReadByte();
+                        byte high = reader.ReadByte();
+                        type = (ushort)((high << 8) | low);
+                    }
+                    else
+                    {
+                        type = reader.ReadByte();
+                    }
+                    curTile.type = type;
+
+                    if (Main.tileFrameImportant[type])
+                    {
+                        curTile.frameX = reader.ReadInt16();
+                        curTile.frameY = reader.ReadInt16();
+                    }
+                    else
+                    {
+                        curTile.frameX = -1;
+                        curTile.frameY = -1;
+                    }
+
+                    if ((flags3 & 8) == 8)
+                        curTile.color(reader.ReadByte());
+                }
+
+                // 墙体
+                if ((flags1 & 4) == 4)
+                {
+                    curTile.wall = reader.ReadByte();
+                    if ((flags3 & 0x10) == 0x10)
+                        curTile.wallColor(reader.ReadByte());
+                }
+
+                // 液体
+                byte liquidType = (byte)((flags1 & 0x18) >> 3);
+                if (liquidType != 0)
+                {
+                    curTile.liquid = reader.ReadByte();
+                    if ((flags3 & 0x80) == 0x80)
+                        curTile.shimmer(true);
+                    else if (liquidType == 2)
+                        curTile.lava(true);
+                    else if (liquidType == 3)
+                        curTile.honey(true);
+                }
+
+                // 电线、斜坡等（flags4）
+                if (hasFlags4)
+                {
+                    if ((flags4 & 2) == 2) curTile.wire(true);
+                    if ((flags4 & 4) == 4) curTile.wire2(true);
+                    if ((flags4 & 8) == 8) curTile.wire3(true);
+                    byte slope = (byte)((flags4 & 0x70) >> 4);
+                    if (slope != 0 && Main.tileSolid[curTile.type])
+                    {
+                        if (slope == 1)
+                            curTile.halfBrick(true);
+                        else
+                            curTile.slope((byte)(slope - 1));
+                    }
+                }
+
+                // 制动器、隐形等（flags3）
+                if (hasFlags3)
+                {
+                    if ((flags3 & 2) == 2) curTile.actuator(true);
+                    if ((flags3 & 4) == 4) curTile.inActive(true);
+                    if ((flags3 & 0x20) == 0x20) curTile.wire4(true);
+                    if ((flags3 & 0x40) == 0x40)
+                    {
+                        byte highWall = reader.ReadByte();
+                        curTile.wall = (ushort)((highWall << 8) | curTile.wall);
+                    }
+                }
+
+                // 隐形/全亮（flags2）
+                if (hasFlags2)
+                {
+                    if ((flags2 & 2) == 2) curTile.invisibleBlock(true);
+                    if ((flags2 & 4) == 4) curTile.invisibleWall(true);
+                    if ((flags2 & 8) == 8) curTile.fullbrightBlock(true);
+                    if ((flags2 & 0x10) == 0x10) curTile.fullbrightWall(true);
+                }
+
+                // 读取重复计数
+                repeat = (flags1 & 0xC0) switch
+                {
+                    0x40 => reader.ReadByte(),
+                    0x80 => reader.ReadInt16(),
+                    _ => 0
+                };
+
+                prevTile = curTile;
+            }
+    }
     #endregion
 }
