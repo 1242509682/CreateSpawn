@@ -274,6 +274,61 @@ internal class MyCmd
                 SendMess(plr, $"区域组修改[c/FAFAFA:{data.AllowedGroup.Count}]个 请使用{Icon(ItemID.WireKite)}");
                 break;
 
+            case "t":
+            case "tile":
+                {
+                    var it = plr.SelectedItem;
+                    if (it.createTile >= 0)
+                    {
+                        data.rw = 31;            // 物块替换
+                        data.rwA1 = it.createTile;
+                        data.rwA2 = it.placeStyle;
+                    }
+                    else if (it.createWall >= 0)
+                    {
+                        data.rw = 32;            // 墙壁替换
+                        data.rwA1 = it.createWall;
+                    }
+                    else if (it.paint > 0)
+                    {
+                        data.rw = 33;            // 油漆替换
+                        data.rwA1 = it.paint;
+                    }
+                    else if (it.paintCoating > 0)
+                    {
+                        data.rw = 34;            // 涂料替换
+                        data.rwA1 = it.paintCoating;
+                    }
+                    else if (it.type == ItemID.WaterBucket || it.type == ItemID.BottomlessBucket)
+                    {
+                        data.rw = 35;            // 液体替换
+                        data.rwA1 = 0;          // 水
+                    }
+                    else if (it.type == ItemID.LavaBucket || it.type == ItemID.BottomlessLavaBucket)
+                    {
+                        data.rw = 35;
+                        data.rwA1 = 1;          // 岩浆
+                    }
+                    else if (it.type == ItemID.HoneyBucket || it.type == ItemID.BottomlessHoneyBucket)
+                    {
+                        data.rw = 35;
+                        data.rwA1 = 2;          // 蜂蜜
+                    }
+                    else if (it.type == ItemID.BottomlessShimmerBucket)
+                    {
+                        data.rw = 35;
+                        data.rwA1 = 3;          // 微光
+                    }
+                    else
+                    {
+                        SendMess(plr, "请手持要替换的物块、墙壁、油漆、涂料或液体桶");
+                        return;
+                    }
+                    data.Mode = 6;
+                    SendMess(plr, $"连锁替换模式 请使用{Icon(ItemID.WireKite)}框选区域");
+                    break;
+                }
+
             default:
                 ShowReg(plr);
                 data.Reset();

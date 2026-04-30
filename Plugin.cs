@@ -19,7 +19,7 @@ public class Plugin(Main game) : TerrariaPlugin(game)
     public static string PluginName => "复制建筑"; // 插件名称
     public override string Name => PluginName;
     public override string Author => "少司命 羽学";
-    public override Version Version => new(2,0,0);
+    public override Version Version => new(2, 0, 1);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护、进度限制粘贴";
     #endregion
 
@@ -166,7 +166,7 @@ public class Plugin(Main game) : TerrariaPlugin(game)
 
         }).ContinueWith(_ =>
         {
-            FixItem(data,TSPlayer.Server); // 粘贴箱子、实体、标牌
+            FixItem(data, TSPlayer.Server); // 粘贴箱子、实体、标牌
             sw.Stop();
             SendMess(TSPlayer.Server, $"粘贴 {name} 完成！已创造: {count} 个图格," +
                                       $"用时 {sw.ElapsedMilliseconds} ms\n" +

@@ -1,5 +1,6 @@
 ﻿using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.ID;
 using TerrariaApi.Server;
 using TShockAPI;
 using static CreateSpawn.Utils;
@@ -37,6 +38,8 @@ internal class PlayerState
         public int rwA3 = 0;        // 参数3
         public int rwDir = 0;       // 操作时玩家的朝向（1右 -1左）
         public int rwToolMode = 0; // 当前操作的精密线控仪工具模式（电线颜色）
+        public int sKind = -1;   // 连锁源类型种类：0物块 1墙 2油漆 3涂料 4液体
+        public int sVal = -1;    // 连锁源类型的具体值
 
         public void Reset()
         {

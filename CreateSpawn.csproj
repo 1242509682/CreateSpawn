@@ -16,5 +16,4 @@
 	  <PackageReference Include="TShock" Version="6.1.0" />
 	</ItemGroup>
 
-
 </Project>

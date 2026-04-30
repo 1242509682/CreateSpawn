@@ -80,16 +80,23 @@ public static class WorldTile
             int a3 = Mydata.rwA3;
 
             // 斜坡：1右斜坡 2左斜坡
-            if (op == 20)
+            if (op == 17)
             {
                 a1 = (dir == 1) ? 1 : 2;
                 Mydata.rwA1 = a1;
             }
             // 半砖：3右半砖 4左半砖
-            else if (op == 21)
+            else if (op == 18)
             {
                 a1 = (dir == 1) ? 3 : 4;
                 Mydata.rwA1 = a1;
+            }
+
+            // 连锁替换
+            if (op == 21)
+            {
+                HandleChain(plr, Mydata, e, e.StartX, e.StartY, e.EndX, e.EndY, rect);
+                return; // 已处理完成，直接返回避免后续逻辑
             }
 
             // 覆盖方向（用于方块放置的朝向）
@@ -364,6 +371,68 @@ public static class WorldTile
     }
     #endregion
 
+    #region 处理连锁替换模式
+    private static void HandleChain(TSPlayer plr, MyData d, GetDataHandlers.MassWireOperationEventArgs e,
+    int sx, int sy, int ex, int ey, Rectangle rect)
+    {
+        string[] names = { "物块", "墙壁", "油漆", "涂料", "液体" };
+        int stage = d.rwA3;   // 目标种类（0-4）
+        if (stage < 0 || stage > 4) stage = -2;
+
+        if (d.sKind == -1 && sx == ex && sy == ey)
+        {
+            // 单击记录源类型
+            var tile = Main.tile[sx, sy];
+            int kind = -1, val = -1;
+            if (tile.active()) { kind = 0; val = tile.type; }
+            else if (tile.wall > 0) { kind = 1; val = tile.wall; }
+            else if (tile.color() > 0) { kind = 2; val = tile.color(); }
+            else if (tile.wallColor() > 0) { kind = 3; val = tile.wallColor(); }
+            else if (tile.liquid > 0) { kind = 4; val = tile.liquidType(); }
+            if (kind == -1)
+            {
+                SendMess(plr, "无效源类型");
+                d.rw = 0; e.Handled = true; return;
+            }
+            if (stage != kind)
+            {
+                SendMess(plr, $"手持目标类型[{names[stage]}]与点击源类型[{names[kind]}]不匹配");
+                d.rw = 0; e.Handled = true; return;
+            }
+            d.sKind = kind;
+            d.sVal = val;
+            SendMess(plr, $"源类型:{names[kind]} ID={val}");
+            SendMess(plr, "请框选替换区域");
+            e.Handled = true; return;
+        }
+        else if (d.sKind != -1 && (sx != ex || sy != ey))
+        {
+            // 矩形框选：执行替换
+            int tVal = d.rwA1, tSty = d.rwA2;
+            if (stage != d.sKind)
+            {
+                SendMess(plr, "源类型与目标类型不匹配");
+                d.rw = 0; e.Handled = true; return;
+            }
+            switch (d.sKind)
+            {
+                case 0: RpTileType(plr, rect, tVal, tSty, d.sVal); break;
+                case 1: RpWallType(plr, rect, tVal, d.sVal); break;
+                case 2: RpPaintType(plr, rect, (byte)tVal, (byte)d.sVal); break;
+                case 3: RpCoatType(plr, rect, (byte)tVal, (byte)d.sVal); break;
+                case 4: RpLiquidType(plr, rect, tVal, d.sVal); break;
+            }
+            d.rw = 0; d.rwA1 = d.rwA2 = d.rwA3 = 0; d.sKind = d.sVal = -1;
+            e.Handled = true; return;
+        }
+        else
+        {
+            SendMess(plr, d.sKind == -1 ? $"请用{Icon(ItemID.WireKite)}点击需替换的图格" : $"请用{Icon(ItemID.WireKite)}框选连锁区域");
+            d.rw = 0; e.Handled = true;
+        }
+    }
+    #endregion
+
     #region 批量图格操作指令
     public static void TileOp(CommandArgs args, TSPlayer plr)
     {
@@ -374,8 +443,9 @@ public static class WorldTile
             sb.AppendLine($"1清理{Icon(ItemID.Wood)} 2填充{Icon(ItemID.Wood)} 3替换{Icon(ItemID.Wood)} 4覆盖{Icon(ItemID.Wood)} 5涂装{Icon(ItemID.Wood)}");
             sb.AppendLine($"6清理{Icon(ItemID.WoodWall)} 7填充{Icon(ItemID.WoodWall)} 8替换{Icon(ItemID.WoodWall)} 9覆盖{Icon(ItemID.WoodWall)}  10涂装{Icon(ItemID.WoodWall)}");
             sb.AppendLine($"11清理涂装{Icon(ItemID.WhitePaint)} 12全部涂装{Icon(ItemID.WhitePaint)} 13虚化切换{Icon(ItemID.ActuationRod)}");
-            sb.AppendLine($"14清理液体{Icon(ItemID.SuperAbsorbantSponge)} 15放{Icon(ItemID.WaterBucket)} 16放{Icon(ItemID.LavaBucket)} 17放{Icon(ItemID.HoneyBucket)} 18放{Icon(ItemID.BottomlessShimmerBucket)}");
-            sb.AppendLine($"19电路修改{Icon(ItemID.WireKite)} 20斜坡{Icon(ItemID.Wood)} 21半砖{Icon(ItemID.Wood)} 22全砖{Icon(ItemID.Wood)} 23清理所有{Icon(ItemID.Dynamite)}");
+            sb.AppendLine($"14清理液体{Icon(ItemID.SuperAbsorbantSponge)} 15放置液体{Icon(ItemID.WaterBucket)} 16电路修改{Icon(ItemID.WireKite)} ");
+            sb.AppendLine($"17斜坡{Icon(ItemID.Wood)} 18半砖{Icon(ItemID.Wood)} 19全砖{Icon(ItemID.Wood)}");
+            sb.AppendLine($"20清理所有{Icon(ItemID.SuperBomb)} 21连锁替换{Icon(ItemID.HandOfCreation)}");
 
             sb.AppendLine($"\n范围编辑图格: /{cmd} t <编号>");
             sb.AppendLine($"撤销编辑操作: /{cmd} bk");
@@ -383,9 +453,9 @@ public static class WorldTile
             return;
         }
 
-        if (!int.TryParse(args.Parameters[1], out int op) || op < 1 || op > 23)
+        if (!int.TryParse(args.Parameters[1], out int op) || op < 1 || op > 21)
         {
-            SendMess(plr, "操作编号为 1-23");
+            SendMess(plr, "操作编号为 1-21");
             return;
         }
 
@@ -437,21 +507,60 @@ public static class WorldTile
                 break;
             case 13: SetOpMode(plr, 13); break; // 虚化切换
             case 14: SetOpMode(plr, 14); break; // 清理液体
-            case 15: SetOpMode(plr, 15); break; // 放水
-            case 16: SetOpMode(plr, 16); break; // 放岩浆
-            case 17: SetOpMode(plr, 17); break; // 放蜂蜜
-            case 18: SetOpMode(plr, 18); break; // 放微光
-            case 19: SetOpMode(plr, 19); break; // 电路修改
-            case 20: // 斜坡
+            case 15: // 放液体（根据手持桶）
+                if (sel.type == ItemID.WaterBucket || sel.type == ItemID.BottomlessBucket)
+                    SetOpMode(plr, 15, 0); // 液体类型 0=水
+                else if (sel.type == ItemID.LavaBucket || sel.type == ItemID.BottomlessLavaBucket)
+                    SetOpMode(plr, 15, 1); // 岩浆
+                else if (sel.type == ItemID.HoneyBucket || sel.type == ItemID.BottomlessHoneyBucket)
+                    SetOpMode(plr, 15, 2); // 蜂蜜
+                else if (sel.type == ItemID.BottomlessShimmerBucket)
+                    SetOpMode(plr, 15, 3); // 微光
+                else
+                    SendMess(plr, "请手持液体桶（水/岩浆/蜂蜜/微光）");
+                break;
+            case 16: // 电路修改
+                SetOpMode(plr, 16);
+                break;
+            case 17: // 斜坡）
                 int slopeType = (plr.TPlayer.direction == 1) ? 1 : 2;
-                SetOpMode(plr, 20, slopeType);
+                SetOpMode(plr, 17, slopeType);
                 break;
-            case 21: // 半砖
+            case 18: // 半砖
                 int halfType = (plr.TPlayer.direction == 1) ? 3 : 4;
-                SetOpMode(plr, 21, halfType);
+                SetOpMode(plr, 18, halfType);
                 break;
-            case 22: SetOpMode(plr, 22); break; // 全砖
-            case 23: SetOpMode(plr, 23); break; // 清理所有
+            case 19: // 全砖
+                SetOpMode(plr, 19);
+                break;
+            case 20: // 清理所有
+                SetOpMode(plr, 20);
+                break;
+            case 21: // 连锁替换
+                {
+                    var it = plr.SelectedItem;
+                    int tKind = -1, tVal = 0, tSty = 0;
+                    if (it.createTile >= 0) { tKind = 0; tVal = it.createTile; tSty = it.placeStyle; }
+                    else if (it.createWall >= 0) { tKind = 1; tVal = it.createWall; }
+                    else if (it.paint > 0) { tKind = 2; tVal = it.paint; }
+                    else if (it.paintCoating > 0) { tKind = 3; tVal = it.paintCoating; }
+                    else if (it.type == ItemID.WaterBucket || it.type == ItemID.BottomlessBucket)
+                    { tKind = 4; tVal = 0; }
+                    else if (it.type == ItemID.LavaBucket || it.type == ItemID.BottomlessLavaBucket)
+                    { tKind = 4; tVal = 1; }
+                    else if (it.type == ItemID.HoneyBucket || it.type == ItemID.BottomlessHoneyBucket)
+                    { tKind = 4; tVal = 2; }
+                    else if (it.type == ItemID.BottomlessShimmerBucket)
+                    { tKind = 4; tVal = 3; }
+                    else
+                    {
+                        SendMess(plr, "请手持物块/墙/漆/涂料/液桶");
+                        return;
+                    }
+                    SetOpMode(plr, 21, tVal, tSty, tKind);  // a1=目标值, a2=样式, a3=目标种类
+                    SendMess(plr, $"连锁替换模式：请点击{Icon(ItemID.WireKite)}【源类型】图格");
+                    break;
+                }
         }
     }
     #endregion
@@ -465,32 +574,30 @@ public static class WorldTile
         data.rwA2 = arg2;
         data.rwA3 = arg3;
         data.rwDir = plr.TPlayer.direction;
-
+        var item = plr.SelectedItem.type;
         string msg = op switch
         {
-            1 => $"清理{Icon(ItemID.Wood)}",
-            2 => $"填充{Icon(ItemID.Wood)}(根据玩家朝向)",
-            3 => $"替换{Icon(ItemID.Wood)}(根据玩家朝向)",
-            4 => $"覆盖{Icon(ItemID.Wood)}(根据玩家朝向)",
-            5 => $"涂装{Icon(ItemID.SpectrePaintbrush)} -> {Icon(ItemID.Wood)}",
-            6 => $"清理{Icon(ItemID.WoodWall)}",
-            7 => $"填充{Icon(ItemID.WoodWall)}",
-            8 => $"替换{Icon(ItemID.WoodWall)}",
-            9 => $"覆盖{Icon(ItemID.WoodWall)}",
-            10 => $"涂装{Icon(ItemID.SpectrePaintRoller)} -> {Icon(ItemID.WoodWall)}",
-            11 => $"清理涂装{Icon(ItemID.WhitePaint)}",
-            12 => $"全部涂装{Icon(ItemID.WhitePaint)}",
-            13 => $"虚化切换{Icon(ItemID.ActuationRod)}（根据范围统一）",
-            14 => $"清理液体{Icon(ItemID.SuperAbsorbantSponge)}",
-            15 => $"放水{Icon(ItemID.WaterBucket)}",
-            16 => $"放岩浆{Icon(ItemID.LavaBucket)}",
-            17 => $"放蜂蜜{Icon(ItemID.HoneyBucket)}",
-            18 => $"放微光{Icon(ItemID.BottomlessShimmerBucket)}",
-            19 => $"电路修改{Icon(ItemID.WireKite)}",
-            20 => $"斜坡{Icon(ItemID.Wood)}(根据玩家朝向)",
-            21 => $"半砖{Icon(ItemID.Wood)}(根据玩家朝向)",
-            22 => $"全砖{Icon(ItemID.Wood)}",
-            23 => $"清理所有{Icon(ItemID.Dynamite)}",
+            1 => $"清理 {Icon(item)}",
+            2 => $"填充 {Icon(item)}(根据朝向)",
+            3 => $"替换 {Icon(item)}(根据朝向)",
+            4 => $"覆盖 {Icon(item)}(根据朝向)",
+            5 => $"涂装 {Icon(item)} -> {Icon(ItemID.Wood)}",
+            6 => $"清理 {Icon(item)}",
+            7 => $"填充 {Icon(item)}",
+            8 => $"替换 {Icon(item)}",
+            9 => $"覆盖 {Icon(item)}",
+            10 => $"涂装 {Icon(item)} -> {Icon(ItemID.WoodWall)}",
+            11 => $"清理涂装 {Icon(ItemID.WhitePaint)}",
+            12 => $"全部涂装 {Icon(item)}",
+            13 => $"虚化切换 {Icon(ItemID.ActuationRod)}（根据范围统一）",
+            14 => $"清理液体 {Icon(ItemID.SuperAbsorbantSponge)}",
+            15 => $"放液体 {Icon(item)}",
+            16 => $"电路修改 {Icon(ItemID.WireKite)}",
+            17 => $"斜坡 {Icon(ItemID.Wood)}(根据朝向)",
+            18 => $"半砖 {Icon(ItemID.Wood)}(根据朝向)",
+            19 => $"全砖 {Icon(ItemID.Wood)}",
+            20 => $"清理所有 {Icon(ItemID.SuperBomb)}",
+            21 => $"连锁替换 {Icon(item)}",
             _ => "未知操作"
         };
         SendMess(plr, $"模式:{msg} 请用{Icon(ItemID.WireKite)}框选范围");
@@ -717,12 +824,12 @@ public static class WorldTile
                 // 物品框
                 if (tile.type == TileID.ItemFrame)
                     TEItemFrame.Kill(x, y);
-                
+
                 // 武器架
                 if (tile.type == TileID.WeaponsRack ||
                     tile.type == TileID.WeaponsRack2)
                     TEWeaponsRack.Kill(x, y);
-                
+
                 // 逻辑感应器
                 if (tile.type == TileID.LogicSensor)
                     TELogicSensor.Kill(x, y);
@@ -742,7 +849,7 @@ public static class WorldTile
                 // 训练假人（稻草人）
                 if (tile.type == TileID.TargetDummy)
                     TETrainingDummy.Kill(x, y);
-                
+
                 // 衣帽架
                 if (tile.type == TileID.HatRack)
                     TEHatRack.Kill(x, y);
@@ -755,7 +862,7 @@ public static class WorldTile
                 if (tile.type == TileID.CritterAnchor)
                     TECritterAnchor.Kill(x, y);
                 // 风筝锚点
-                if(tile.type == TileID.KiteAnchor)
+                if (tile.type == TileID.KiteAnchor)
                     TEKiteAnchor.Kill(x, y);
             }
 
@@ -872,7 +979,7 @@ public static class WorldTile
     }
     #endregion
 
-    #region 图格编辑实现
+    #region 图格编辑实现（OP 1到20）
     private static void ExecuteEdit(Rectangle rect, int op, int a1, int a2, int a3, int dir, int toolMode)
     {
         // 对于 op == 13，需要先扫描区域
@@ -926,32 +1033,31 @@ public static class WorldTile
                     case 14: // 清理液体
                         WorldGen.EmptyLiquid(x, y);
                         break;
-                    case 15: // 放水
-                        ClearEverything(x, y); tile.liquid = byte.MaxValue; tile.liquidType(0);
+                    case 15:
+                        // 如果当前不是该液体，则覆盖
+                        int curLiq = tile.liquidType();
+                        if (tile.liquid == 0 || curLiq != a1)
+                        {
+                            if (tile.liquid > 0)
+                                WorldGen.EmptyLiquid(x, y); // 清除旧液体
+                            tile.liquid = byte.MaxValue;
+                            tile.liquidType(a1);
+                        }
                         break;
-                    case 16: // 放岩浆
-                        ClearEverything(x, y); tile.liquid = byte.MaxValue; tile.liquidType(1);
-                        break;
-                    case 17: // 放蜂蜜
-                        ClearEverything(x, y); tile.liquid = byte.MaxValue; tile.liquidType(2);
-                        break;
-                    case 18: // 放微光
-                        ClearEverything(x, y); tile.liquid = byte.MaxValue; tile.liquidType(3);
-                        break;
-                    case 19: // 电路修改
+                    case 16: // 电路修改
                         bool isPlace = toolMode >= 1 && toolMode <= 31;
                         SetWire(x, y, toolMode, isPlace);
                         break;
-                    case 20: // 斜坡
+                    case 17: // 斜坡
                         if (a1 == 1 || a1 == 2) WorldGen.SlopeTile(x, y, a1);
                         break;
-                    case 21: // 半砖
+                    case 18: // 半砖
                         if (a1 == 3 || a1 == 4) WorldGen.SlopeTile(x, y, a1);
                         break;
-                    case 22: // 全砖
+                    case 19: // 全砖
                         tile.Clear(TileDataType.Slope);
                         break;
-                    case 23: // 清理所有
+                    case 20: // 清理所有
                         ClearEverything(x, y);
                         break;
                 }
@@ -1017,6 +1123,109 @@ public static class WorldTile
                 else WorldGen.KillActuator(x, y);
             }
         }
+    }
+    #endregion
+
+    #region TShock区域 连锁替换图格实现（OP 21)
+    private static void ChainExec(TSPlayer plr, Rectangle rect, Func<int, int, int> get,
+     Func<int, int, int, bool> same, Action<int, int> set, int src)
+    {
+        var bef = GetTileData(rect);
+        var stk = LoadUndo(plr.Name);
+        stk.Push(new UndoOperation { Area = rect, BeforeState = bef, Timestamp = DateTime.Now });
+        SaveUndo(plr.Name, stk);
+        var seeds = new List<Point>();
+        for (int x = rect.X; x < rect.Right; x++)
+            for (int y = rect.Y; y < rect.Bottom; y++)
+                if (same(x, y, src)) seeds.Add(new Point(x, y));
+        var sw = Stopwatch.StartNew();
+        int cnt = 0;
+        Task.Run(() =>
+        {
+            var vis = new HashSet<Point>();
+            foreach (var p in seeds)
+            {
+                if (vis.Contains(p)) continue;
+                if (!same(p.X, p.Y, src)) continue;
+                var q = new Queue<Point>();
+                q.Enqueue(p);
+                var vein = new List<Point>();
+                while (q.Count > 0)
+                {
+                    var cur = q.Dequeue();
+                    if (vis.Contains(cur)) continue;
+                    if (!same(cur.X, cur.Y, src)) continue;
+                    vis.Add(cur);
+                    vein.Add(cur);
+                    for (int dx = -1; dx <= 1; dx++)
+                        for (int dy = -1; dy <= 1; dy++)
+                        {
+                            if (dx == 0 && dy == 0) continue;
+                            int nx = cur.X + dx, ny = cur.Y + dy;
+                            if (nx >= rect.X && nx < rect.Right && ny >= rect.Y && ny < rect.Bottom)
+                                q.Enqueue(new Point(nx, ny));
+                        }
+                }
+
+                foreach (var v in vein) set(v.X, v.Y);
+                cnt += vein.Count;
+            }
+            sw.Stop();
+            for (int x = rect.X; x < rect.Right; x++)
+                for (int y = rect.Y; y < rect.Bottom; y++)
+                    NetMessage.SendTileSquare(-1, x, y);
+            AnimMag.Add(rect);
+            SendMess(plr, $"替换{cnt}格 用时{sw.ElapsedMilliseconds}ms\n撤销:/{cmd} bk");
+        });
+    }
+
+    public static void RpTileType(TSPlayer p, Rectangle r, int newTile, int sty, int src)
+    {
+        ChainExec(p, r,
+            (x, y) => Main.tile[x, y].active() ? Main.tile[x, y].type : -1,
+            (x, y, t) => Main.tile[x, y].active() && Main.tile[x, y].type == t,
+            (x, y) => 
+            { 
+                WorldGen.KillTile(x, y, false, false, true); 
+                WorldGen.PlaceTile(x, y, newTile, plr: p.Index, style: sty); 
+            },
+            src);
+    }
+
+    public static void RpWallType(TSPlayer p, Rectangle r, int newWall, int src)
+    {
+        ChainExec(p, r,
+            (x, y) => Main.tile[x, y].wall,
+            (x, y, w) => Main.tile[x, y].wall == w,
+            (x, y) => { WorldGen.KillWall(x, y, false); WorldGen.PlaceWall(x, y, newWall); },
+            src);
+    }
+
+    public static void RpPaintType(TSPlayer p, Rectangle r, byte newPaint, byte src)
+    {
+        ChainExec(p, r,
+            (x, y) => Main.tile[x, y].color(),
+            (x, y, c) => Main.tile[x, y].color() == c,
+            (x, y) => WorldGen.paintTile(x, y, newPaint),
+            src);
+    }
+
+    public static void RpCoatType(TSPlayer p, Rectangle r, byte newCoat, byte src)
+    {
+        ChainExec(p, r,
+            (x, y) => Main.tile[x, y].wallColor(),
+            (x, y, c) => Main.tile[x, y].wallColor() == c,
+            (x, y) => WorldGen.paintCoatTile(x, y, newCoat),
+            src);
+    }
+
+    public static void RpLiquidType(TSPlayer p, Rectangle r, int newLiq, int src)
+    {
+        ChainExec(p, r,
+            (x, y) => Main.tile[x, y].liquid > 0 ? Main.tile[x, y].liquidType() : -1,
+            (x, y, t) => Main.tile[x, y].liquid > 0 && Main.tile[x, y].liquidType() == t,
+            (x, y) => { Main.tile[x, y].liquid = 255; Main.tile[x, y].liquidType(newLiq); },
+            src);
     }
     #endregion
 
