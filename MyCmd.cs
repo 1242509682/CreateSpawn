@@ -45,7 +45,7 @@ internal class MyCmd
                 $"[c/AD89D5:复][c/D68ACA:制][c/DF909A:建][c/E5A894:筑]" +
                 $"{Icon(ItemID.NebulaPickup2)} " +
                 $"{Icon(ItemID.FragmentVortex)}" +
-                $"[c/F2F2C7:开发] [c/BFDFEA:by] [c/00FFFF:羽学] " +
+                $"[c/F2F2C7:开发] [c/BFDFEA:by] [c/00FFFF:羽学] | [c/7CAEDD:少司命] " +
                 $"{Icon(ItemID.FragmentStardust)}");
         }
         else
