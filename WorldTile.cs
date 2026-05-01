@@ -317,8 +317,8 @@ public static class WorldTile
 
         SendMess(plr, $"正在粘贴建筑 '{buildName}' 到矩形区域 ({rect.X},{rect.Y}) 尺寸 {w}x{h}");
 
-        // 自动创建区域
-        string regName = $"{plr.Name}_{DateTime.Now:yyyyMMddHHmmss}";
+        // 自动创建区域，使用建筑文件名 + 时间戳
+        string regName = $"{buildName}_{DateTime.Now:yyyyMMddHHmmss}";
         if (Config.CreateRegion)
         {
             if (!TShock.Regions.AddRegion(rect.X, rect.Y, w, h, regName, plr.Name, Main.worldID.ToString()))

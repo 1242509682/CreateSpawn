@@ -19,8 +19,8 @@ public class Plugin(Main game) : TerrariaPlugin(game)
     public static string PluginName => "复制建筑"; // 插件名称
     public override string Name => PluginName;
     public override string Author => "少司命 羽学";
-    public override Version Version => new(2, 0, 1);
-    public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、自动区域保护、进度限制粘贴";
+    public override Version Version => new(2, 0, 2);
+    public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、区域保护与修改、范围图格操作、修复局部图格、自动生成出生点建筑等";
     #endregion
 
     #region 文件后缀与路径
@@ -29,7 +29,7 @@ public class Plugin(Main game) : TerrariaPlugin(game)
     public static readonly string CfgPath = Path.Combine(MainPath, $"{PluginName}.json"); // 配置文件路径
     public static readonly string AutoSaveDir = Path.Combine(MainPath, "地图快照");     // 备份角色路径
     public static readonly string ClipDir = Path.Combine(MainPath, "建筑文件");
-    public static readonly string RestoreDir = Path.Combine(MainPath, "建筑修复");
+    public static readonly string RestoreDir = Path.Combine(MainPath, "操作记录");
     public static string GetClipPath(string name) => Path.Combine(ClipDir, $"{name}.clip");
     // 文件扩展名常量
     public static readonly string TwsExt = ".tws";      // 世界快照文件扩展名
@@ -198,7 +198,7 @@ public class Plugin(Main game) : TerrariaPlugin(game)
         Directory.CreateDirectory(ClipDir);
 
         var asm = Assembly.GetExecutingAssembly();
-        List<string> files = new() { "出生点.clip", };
+        List<string> files = new() { "出生点.clip", "岛主刷怪场普通版.clip", "岛主刷怪场天顶版.clip" };
 
         foreach (var file in files)
         {

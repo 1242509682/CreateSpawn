@@ -10,6 +10,8 @@
 
 	<ItemGroup>
 	  <EmbeddedResource Include="内嵌资源\出生点.clip" />
+	  <EmbeddedResource Include="内嵌资源\岛主刷怪场天顶版.clip" />
+	  <EmbeddedResource Include="内嵌资源\岛主刷怪场普通版.clip" />
 	</ItemGroup>
 
 	<ItemGroup>
