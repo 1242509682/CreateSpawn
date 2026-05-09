@@ -53,6 +53,7 @@ internal class MyCmd
             sb.AppendLine($"\n《{PluginName}》");
         }
 
+        sb.AppendLine($"/{cmd} t --操作图格");
         sb.AppendLine($"/{cmd} sv --复制建筑");
         sb.AppendLine($"/{cmd} pt --粘贴建筑");
         sb.AppendLine($"/{cmd} bk --撤销操作");
@@ -60,7 +61,6 @@ internal class MyCmd
 
         if (IsAdmin(plr))
         {
-            sb.AppendLine($"/{cmd} t --操作图格");
             sb.AppendLine($"/{cmd} r --修改区域");
             sb.AppendLine($"/{cmd} c --修改配置");
             sb.AppendLine($"/{cmd} rs --重置数据");
@@ -84,8 +84,8 @@ internal class MyCmd
         {
             switch (args.Parameters[0].ToLower())
             {
-                case "t" when InGame(plr) && IsAdmin(plr):
-                case "tile" when InGame(plr) && IsAdmin(plr):
+                case "t" when InGame(plr):
+                case "tile" when InGame(plr):
                     TileOp(args, plr); // 范围操作图格指令
                     break;
 

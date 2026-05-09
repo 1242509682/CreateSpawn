@@ -14,13 +14,18 @@
 |  /cb pt   | create.copy       |   粘贴建筑 |
 |  /cb fix  | create.copy       |   修复图格 |
 |  /cb bk   | create.copy       |   撤销操作 |
-|  /cb t    | create.admin      |   操作图格 |
+|  /cb t    | create.copy       |   操作图格 |
 |  /cb r    | create.admin      |   修改区域 |
 |  /cb c    | create.admin      |   修改配置 |
 |  /reload  | tshock.cfg.reload |   重载配置 |
 
 ## 更新日志
 ```
+v2.0.3
+优化了/cb t 指令，允许create.copy权限使用
+不需要每次用宏伟蓝图都重复输入/cb t指令(在已选模式下再次输入/cb t为关闭)
+修复/cb t 16 电路操作模式下的蓝电线与绿电线相反BUG(掩码写反了)
+
 v2.0.2
 移除了RLE压缩,只保留GZIP压缩（防止大建筑跨地图粘贴导致操作记录损坏）
 自动创建区域名称改为建筑名称+时间戳

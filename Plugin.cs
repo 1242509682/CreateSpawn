@@ -19,7 +19,7 @@ public class Plugin(Main game) : TerrariaPlugin(game)
     public static string PluginName => "复制建筑"; // 插件名称
     public override string Name => PluginName;
     public override string Author => "少司命 羽学";
-    public override Version Version => new(2, 0, 2);
+    public override Version Version => new(2, 0, 3);
     public override string Description => "使用指令复制区域建筑,支持保存建筑文件、跨地图粘贴、区域保护与修改、范围图格操作、修复局部图格、自动生成出生点建筑等";
     #endregion
 

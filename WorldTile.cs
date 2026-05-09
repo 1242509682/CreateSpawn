@@ -41,7 +41,7 @@ public static class WorldTile
         x2++; y2++; // 包含终点图格（通常拉线时是点对点，这里扩展到包含整个矩形）
         Rectangle rect = new Rectangle(x1, y1, x2 - x1, y2 - y1);
 
-        if (Mydata.rwFix) // 修复模式
+        if (Mydata.rwFix) // 修复模式 cb fix
         {
             string snapPath = Mydata.rwSnap;
             string signPath = Mydata.rwSign;
@@ -57,19 +57,25 @@ public static class WorldTile
 
             SendMess(plr, $"\n正在从备份恢复 ({x1},{y1}) => ({x2},{y2})");
             Fix(plr, Mydata, snapPath, signPath, rect, e);
+            return;
         }
         else if (!string.IsNullOrEmpty(Mydata.rwPaste))
         {
+            // cb pt 粘贴
             Paste(plr, Mydata, e.StartX, e.StartY, e.EndX, e.EndY, e);
+            return;
         }
         else if (!string.IsNullOrEmpty(Mydata.rwCopy))
         {
+            // cb sv 保存
             // 检查是否有待保存的建筑
             SaveBuild(plr, Mydata.rwCopy, rect);
             Mydata.rwCopy = string.Empty; // 清空状态
             e.Handled = true;
+            return;
         }
 
+        // cb t 图格范围操作
         if (Mydata.rw != 0)
         {
             // 根据框选方向决定朝向（用于方块、斜坡、半砖）
@@ -108,19 +114,16 @@ public static class WorldTile
             stack.Push(new UndoOperation { Area = rect, BeforeState = beforeState, Timestamp = DateTime.Now });
             SaveUndo(plr.Name, stack);
 
-            var sw = Stopwatch.StartNew();
             Task.Run(() => ExecuteEdit(rect, op, a1, a2, a3, dir, toolMode)).ContinueWith(_ =>
             {
-                sw.Stop();
                 AnimMag.Add(rect); // 显示区域动画
-                SendMess(plr, $"操作完成，用时 {sw.ElapsedMilliseconds} ms\n撤销操作：/{cmd} bk");
-                Mydata.rw = 0;
-                Mydata.rwA1 = Mydata.rwA2 = Mydata.rwA3 = 0;
-                Mydata.rwToolMode = 0;
+                SendMess(plr, $"撤销操作：/{cmd} bk");
+                SendMess(plr, $"关闭操作: /{cmd} t");
             });
             e.Handled = true;
         }
 
+        // cb r 区域指令
         if (Mydata.Mode != 0)
         {
             SetRegion(e, plr, Mydata, x1, y1, rect);
@@ -379,9 +382,9 @@ public static class WorldTile
         int stage = d.rwA3;   // 目标种类（0-4）
         if (stage < 0 || stage > 4) stage = -2;
 
-        if (d.sKind == -1 && sx == ex && sy == ey)
+        // 单击 → 记录或重新记录源
+        if (sx == ex && sy == ey)
         {
-            // 单击记录源类型
             var tile = Main.tile[sx, sy];
             int kind = -1, val = -1;
             if (tile.active()) { kind = 0; val = tile.type; }
@@ -392,12 +395,12 @@ public static class WorldTile
             if (kind == -1)
             {
                 SendMess(plr, "无效源类型");
-                d.rw = 0; e.Handled = true; return;
+                e.Handled = true; return;
             }
             if (stage != kind)
             {
                 SendMess(plr, $"手持目标类型[{names[stage]}]与点击源类型[{names[kind]}]不匹配");
-                d.rw = 0; e.Handled = true; return;
+                e.Handled = true; return;
             }
             d.sKind = kind;
             d.sVal = val;
@@ -405,14 +408,15 @@ public static class WorldTile
             SendMess(plr, "请框选替换区域");
             e.Handled = true; return;
         }
-        else if (d.sKind != -1 && (sx != ex || sy != ey))
+
+        // 框选 → 执行替换（保留源，不清除任何模式）
+        if (d.sKind != -1 && (sx != ex || sy != ey))
         {
-            // 矩形框选：执行替换
             int tVal = d.rwA1, tSty = d.rwA2;
             if (stage != d.sKind)
             {
                 SendMess(plr, "源类型与目标类型不匹配");
-                d.rw = 0; e.Handled = true; return;
+                e.Handled = true; return;
             }
             switch (d.sKind)
             {
@@ -422,20 +426,27 @@ public static class WorldTile
                 case 3: RpCoatType(plr, rect, (byte)tVal, (byte)d.sVal); break;
                 case 4: RpLiquidType(plr, rect, tVal, d.sVal); break;
             }
-            d.rw = 0; d.rwA1 = d.rwA2 = d.rwA3 = 0; d.sKind = d.sVal = -1;
-            e.Handled = true; return;
+            // 保留 d.rw 以及 d.sKind/d.sVal，不清除
+            e.Handled = true;
+            return;
         }
-        else
-        {
-            SendMess(plr, d.sKind == -1 ? $"请用{Icon(ItemID.WireKite)}点击需替换的图格" : $"请用{Icon(ItemID.WireKite)}框选连锁区域");
-            d.rw = 0; e.Handled = true;
-        }
+
+        // 其他情况提示
+        SendMess(plr, d.sKind == -1 ? $"请用{Icon(ItemID.WireKite)}【单击】需替换的源图格" : $"请用{Icon(ItemID.WireKite)}【框选】连锁区域");
+        SendMess(plr,$"关闭操作模式: /{cmd} t");
+        e.Handled = true;
     }
     #endregion
 
     #region 批量图格操作指令
     public static void TileOp(CommandArgs args, TSPlayer plr)
     {
+        // 有参数 → 先清除玩家当前的所有图格操作模式（无论参数是否有效）
+        var data = GetData(plr.Name);
+        data.rw = 0;
+        data.rwA1 = data.rwA2 = data.rwA3 = 0;
+        data.sKind = data.sVal = -1;
+
         if (args.Parameters.Count < 2)
         {
             var sb = new StringBuilder();
@@ -447,7 +458,8 @@ public static class WorldTile
             sb.AppendLine($"17斜坡{Icon(ItemID.Wood)} 18半砖{Icon(ItemID.Wood)} 19全砖{Icon(ItemID.Wood)}");
             sb.AppendLine($"20清理所有{Icon(ItemID.SuperBomb)} 21连锁替换{Icon(ItemID.HandOfCreation)}");
 
-            sb.AppendLine($"\n范围编辑图格: /{cmd} t <编号>");
+            sb.AppendLine($"\n切换图格操作: /{cmd} t <编号>");
+            sb.AppendLine($"关闭操作模式: /{cmd} t");
             sb.AppendLine($"撤销编辑操作: /{cmd} bk");
             SendMess(plr, sb.ToString());
             return;
@@ -1102,15 +1114,16 @@ public static class WorldTile
                 if (isPlace) WorldGen.PlaceWire(x, y);
                 else WorldGen.KillWire(x, y);
             }
-            if ((mode & 2) != 0) // 绿
+            // TShock 中 ToolMode 的蓝线掩码是 2，绿线掩码是 4
+            if ((mode & 2) != 0) // 蓝
             {
-                if (isPlace) WorldGen.PlaceWire2(x, y);
-                else WorldGen.KillWire2(x, y);
-            }
-            if ((mode & 4) != 0) // 蓝
-            {
-                if (isPlace) WorldGen.PlaceWire3(x, y);
+                if (isPlace) WorldGen.PlaceWire3(x, y);  // 蓝线对应 Wire3
                 else WorldGen.KillWire3(x, y);
+            }
+            if ((mode & 4) != 0) // 绿
+            {
+                if (isPlace) WorldGen.PlaceWire2(x, y);  // 绿线对应 Wire2
+                else WorldGen.KillWire2(x, y);
             }
             if ((mode & 8) != 0) // 黄
             {
