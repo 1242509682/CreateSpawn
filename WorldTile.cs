@@ -117,6 +117,7 @@ public static class WorldTile
             Task.Run(() => ExecuteEdit(rect, op, a1, a2, a3, dir, toolMode)).ContinueWith(_ =>
             {
                 AnimMag.Add(rect); // 显示区域动画
+                UpdateWorld(); // 更新所有玩家图格区域为未刷新标记并保存世界
                 SendMess(plr, $"撤销操作：/{cmd} bk");
                 SendMess(plr, $"关闭操作: /{cmd} t");
             });
@@ -200,6 +201,7 @@ public static class WorldTile
             Mydata.rwSign = string.Empty;
             sw.Stop();
             AnimMag.Add(rect);
+            UpdateWorld(); // 更新所有玩家图格区域为未刷新标记并保存世界
             SendMess(plr, $"已恢复区域: {count} 个图格, 用时 {sw.ElapsedMilliseconds} ms\n撤销操作:/{cmd} bk");
         });
 
@@ -365,6 +367,7 @@ public static class WorldTile
             FixItem(data, plr);
             sw.Stop();
             AnimMag.Add(rect);
+            UpdateWorld(); // 更新所有玩家图格区域为未刷新标记并保存世界
             SendMess(plr, $"粘贴 '{buildName}' 完成！已粘贴 {count} 个图格，" +
                           $"用时 {sw.ElapsedMilliseconds} ms\n" +
                           $"撤销操作：/{MyCmd.cmd} bk");
@@ -385,7 +388,7 @@ public static class WorldTile
         // 单击 → 记录或重新记录源
         if (sx == ex && sy == ey)
         {
-            var tile = Main.tile[sx, sy];
+            Tile tile = (Tile)Main.tile[sx, sy];
             int kind = -1, val = -1;
             if (tile.active()) { kind = 0; val = tile.type; }
             else if (tile.wall > 0) { kind = 1; val = tile.wall; }
@@ -426,7 +429,6 @@ public static class WorldTile
                 case 3: RpCoatType(plr, rect, (byte)tVal, (byte)d.sVal); break;
                 case 4: RpLiquidType(plr, rect, tVal, d.sVal); break;
             }
-            // 保留 d.rw 以及 d.sKind/d.sVal，不清除
             e.Handled = true;
             return;
         }
@@ -632,12 +634,13 @@ public static class WorldTile
                     if (wx < 0 || wx >= Main.maxTilesX ||
                         wy < 0 || wy >= Main.maxTilesY) continue;
 
-                    var backup = data.Tiles[x, y];      // 要恢复的图格
-                    var current = Main.tile[wx, wy] ?? new Tile(); // 当前图格（若为 null 则新建）
+                    Tile backup = data.Tiles[x, y];      // 要恢复的图格
+                    Tile current = (Tile)(Main.tile[wx, wy] ?? new Tile()); // 当前图格（若为 null 则新建）
 
                     // 使用 TileSnapshot.TileStruct 比较两个图格是否相同（避免不必要的网络发送）
-                    var tsBackup = TileSnapshot.TileStruct.From(backup);
-                    var tsCurrent = TileSnapshot.TileStruct.From(current);
+                    TileSnapshot.TileStruct tsBackup = TileSnapshot.TileStruct.From(backup);
+                    TileSnapshot.TileStruct tsCurrent = TileSnapshot.TileStruct.From(current);
+
                     if (!tsBackup.Equals(tsCurrent))
                     {
                         current.CopyFrom(backup); // 复制数据
@@ -713,13 +716,6 @@ public static class WorldTile
                 Main.sign[sid].text = sign.text; // 设置文本
             }
         }
-
-        // 强制所有玩家重新加载图格区域（将他们的 TileSections 标记为未加载）
-        for (int i = 0; i < TShock.Players.Length; i++)
-            if (TShock.Players[i]?.Active == true)
-                for (int j = 0; j < Main.maxSectionsX; j++)
-                    for (int k = 0; k < Main.maxSectionsY; k++)
-                        Netplay.Clients[i].TileSections[j, k] = false;
     }
     #endregion
 
@@ -818,7 +814,7 @@ public static class WorldTile
         for (int x = startX; x <= endX; x++)
             for (int y = startY; y <= endY; y++)
             {
-                var tile = Main.tile[x, y];
+                Tile tile = (Tile)Main.tile[x, y];
                 if (tile == null || !tile.active()) continue;
 
                 // 销毁箱子
@@ -906,7 +902,7 @@ public static class WorldTile
             for (int y = 0; y < rect.Height; y++)
             {
                 int wx = rect.X + x, wy = rect.Y + y;
-                var tile = Main.tile[wx, wy];
+                Tile tile = (Tile)Main.tile[wx, wy];
                 data.Tiles[x, y] = (Tile)(tile?.Clone() ?? new Tile());
             }
 
@@ -1017,7 +1013,7 @@ public static class WorldTile
         for (int x = rect.X; x < rect.Right; x++)
             for (int y = rect.Y; y < rect.Bottom; y++)
             {
-                var tile = Main.tile[x, y];
+                Tile tile = (Tile)Main.tile[x, y];
                 if (tile == null) continue;
 
                 switch (op)
@@ -1079,7 +1075,7 @@ public static class WorldTile
     #endregion
 
     #region 设置方块朝向
-    private static void SetDire(ITile tile, int dir)
+    private static void SetDire(Tile tile, int dir)
     {
         if (tile == null || !tile.active()) return;
 
@@ -1247,6 +1243,22 @@ public static class WorldTile
     {
         Main.tile[x, y].ClearEverything();
         NetMessage.SendTileSquare(-1, x, y, TileChangeType.None);
+    }
+    #endregion
+
+    #region 更新整个世界图格方法
+    public static void UpdateWorld()
+    {
+        foreach (RemoteClient sock in Netplay.Clients.Where(s => s.IsActive))
+        {
+            for (int i = Netplay.GetSectionX(0); i <= Netplay.GetSectionX(Main.maxTilesX); i++)
+            {
+                for (int j = Netplay.GetSectionY(0); j <= Netplay.GetSectionY(Main.maxTilesY); j++)
+                    sock.TileSections[i, j] = false;
+            }
+        }
+
+        TShock.Utils.SaveWorld();
     }
     #endregion
 }
